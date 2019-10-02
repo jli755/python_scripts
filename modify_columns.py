@@ -19,11 +19,11 @@ def add_columns(f_name):
     """
     
     file_type = f_name.split(".")[-2]
-    dataset_instance = f_name.split("/")[-2]
+    dataset_instance = f_name.split(os.path.sep)[-2]
     # print(dataset_instance)
     control_construct_scheme = dataset_instance + "_ccs01"
     # print(control_construct_scheme)
-
+    
     if file_type == "dv":
         df = pd.read_csv(f_name, sep="\t", header=None, names = ["variable_name_1", "variable_name_2"])
         # print(df.head(2))
@@ -63,23 +63,26 @@ def main():
 
     note_out = open("notes.txt", "w") 
 
-    rootdir = "../test_data"
+    rootdir = "../bundles"
     interested = ["dv", "qvmapping", "tqlinking", "tvlinking"]
     
     # loops over all subdirectories of a given rootdir, if it is one of above file types, then calculate number of columns
     #for (dir, subdir, files) in os.walk(rootdir):
     for subdir in os.listdir(rootdir):
         path = os.path.join(rootdir, subdir)
-        files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-        print((subdir,path,files))
+        try:
+            files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+            print((subdir,path,files))
+        except WindowsError:
+            continue
+        
         for filename in files:
-            print(filename)
+            #print(filename)
             if any(x in filename for x in interested):
                 file_path = os.path.join(rootdir, subdir, filename)
-                print(file_path)
+                #print(file_path)
                 file_type = filename.split(".")[-2]
-                print(file_type)
-
+                #print(file_type)
 
                 (min_num_columns, max_num_columns) = columns_count(file_path)
                 if min_num_columns != max_num_columns:
@@ -106,7 +109,7 @@ def main():
                     else:
                         note_out.write(file_path + ", neither 2 nor 3 columns: what to do?\n")
                 else:
-                    raise NameError("Should not happen")
+                    note_out.write(file_path + ", Should not happen\n")
 
     note_out.close()
 
