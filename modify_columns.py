@@ -17,13 +17,13 @@ def add_columns(f_name):
     """
     Add one/two columns to existing file
     """
-    
+
     file_type = f_name.split(".")[-2]
     dataset_instance = f_name.split(os.path.sep)[-2]
     # print(dataset_instance)
     control_construct_scheme = dataset_instance + "_ccs01"
     # print(control_construct_scheme)
-    
+
     if file_type == "dv":
         df = pd.read_csv(f_name, sep="\t", header=None, names = ["variable_name_1", "variable_name_2"])
         # print(df.head(2))
@@ -32,7 +32,7 @@ def add_columns(f_name):
         cols = ["dataset_instance_1", "variable_name_1", "dataset_instance_2", "variable_name_2"]
         df = df[cols]
         # print(df.head(2))
-        # overwrite 
+        # overwrite
         df.to_csv(f_name, sep="\t", index=None, header=False)
     elif file_type == "qvmapping":
         df = pd.read_csv(f_name, sep="\t", header=None, names = ["question_construct", "variable_name"])
@@ -65,7 +65,7 @@ def main():
 
     rootdir = "../bundles"
     interested = ["dv", "qvmapping", "tqlinking", "tvlinking"]
-    
+
     # loops over all subdirectories of a given rootdir, if it is one of above file types, then calculate number of columns
     #for (dir, subdir, files) in os.walk(rootdir):
     for subdir in os.listdir(rootdir):
@@ -75,7 +75,7 @@ def main():
             print((subdir,path,files))
         except WindowsError:
             continue
-        
+
         for filename in files:
             #print(filename)
             if any(x in filename for x in interested):
@@ -113,7 +113,7 @@ def main():
 
     note_out.close()
 
-    
+
 if __name__ == '__main__':
     main()
 

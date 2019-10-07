@@ -37,6 +37,7 @@ def main():
         print(filename + ": deleting tmpfile")
         os.unlink(tmpfile)
 
+
 if __name__ == '__main__':
     main()
 

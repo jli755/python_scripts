@@ -4,13 +4,12 @@
 Download files from Archivist
 """
 
-from selenium import webdriver 
+from selenium import webdriver
 import time
 
 # Download geckodriver-v0.25.0-linux64.tar.gz from https://github.com/mozilla/geckodriver/releases
 # unpack the tar.gz: has single binary inside
 driver = webdriver.Firefox(executable_path='/home/jenny/Documents/python_scripts.git/geckodriver')
-
 
 def archivist_login():
     url = "https://archivist.closer.ac.uk/instruments/"
@@ -21,15 +20,15 @@ def archivist_login():
     time.sleep(10)
 
 def main():
-    
+
     archivist_login()
 
     instrument_name = []
-    while True:    
+    while True:
         # div are trial-and-error: could change if webpage changed at all
         trs = driver.find_elements_by_xpath("html/body/div/div/div/div/table/tbody/tr")
         print('This page has {} rows'.format(len(trs)))
-    
+
         # From all the links find instrument name
         for i in range(1, len(trs)):
             # row 0 is header: tr has "th" instead of "td"
@@ -44,7 +43,7 @@ def main():
             break
         loadMoreButton.click()
         time.sleep(5)
-        
+
     print("Got {} instrument names".format(len(instrument_name)))
     with open('filenames.txt', 'w') as f:
         f.write("\n".join(instrument_name))
