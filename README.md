@@ -23,4 +23,4 @@
 ### Week 2 (Oct 7 - Oct 11)
 
 - [x] Scrape [Archivist](https://archivist.closer.ac.uk) continuous
-   - [ ] Download all the `.txt` from [Data](https://archivist.closer.ac.uk/data)
+   - [x] Download all the `.txt` from [Datasets](https://archivist.closer.ac.uk/datasets)
