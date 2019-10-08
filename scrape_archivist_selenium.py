@@ -72,8 +72,11 @@ def archivist_download_instruments(names, output_dir):
 
         time.sleep(10)
         print("  Downloading " + x + "/tq.txt")
-        with open(os.path.join(output_dir, x + ".tqlinking.txt"), "w") as f:
-            f.write(driver.page_source)
+        tq_content = driver.find_elements_by_xpath("html/body/pre")[0].text
+
+        if tq_content:
+            with open(os.path.join(output_dir, x + ".tqlinking.txt"), "w") as f:
+                f.write(tq_content.replace(" ", "\t"))
         time.sleep(3)
 
         print("Getting " + x + "/qv.txt")
@@ -82,8 +85,11 @@ def archivist_download_instruments(names, output_dir):
 
         time.sleep(10)
         print("  Downloading " + x + "/qv.txt")
-        with open(os.path.join(output_dir, x + ".qvmapping.txt"), "w") as f:
-            f.write(driver.page_source)
+        qv_content = driver.find_elements_by_xpath("html/body/pre")[0].text
+
+        if qv_content:
+            with open(os.path.join(output_dir, x + ".qvmapping.txt"), "w") as f:
+                f.write(qv_content.replace(" ", "\t"))
         time.sleep(3)
 
 
@@ -103,7 +109,7 @@ def archivist_get_all_datasets():
         for i in range(1, len(trs)):
             # row 0 is header: tr has "th" instead of "td"
             tr = trs[i]
-            
+
             # column 0 (1st column) is "ID"
             dataset_id = tr.find_elements_by_xpath("td")[0].text
             print('  ' + dataset_id)
@@ -137,7 +143,7 @@ def archivist_download_dataset(id_list, output_dir):
             fname = content.split()[0]
             tv = os.path.join(output_dir, fname + ".tvlinking.txt")
             with open(tv, "w") as f:
-                f.write(content)
+                f.write(content.replace(" ", "\t"))
         time.sleep(3)
 
         print("Getting " + x + "/dv.txt")
@@ -147,10 +153,11 @@ def archivist_download_dataset(id_list, output_dir):
         time.sleep(10)
         print("  Downloading " + x + "/dv.txt")
         dvcontent = driver.find_elements_by_xpath("html/body/pre")[0].text
+
         if dvcontent:
             dv = os.path.join(output_dir, fname + ".dv.txt")
             with open(dv, "w") as f:
-                f.write(dvcontent)
+                f.write(dvcontent.replace(" ", "\t"))
         time.sleep(3)
 
 
@@ -167,8 +174,7 @@ def main():
         f.write("\n".join(names))
     #print(instrument_names)
 
-    archivist_download_instruments(names, output_dir):
-
+    archivist_download_instruments(names, output_dir)
 
     dataset_id_list = archivist_get_all_datasets()
     print("Got {} dataset IDs".format(len(dataset_id_list)))
