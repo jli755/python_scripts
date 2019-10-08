@@ -28,8 +28,15 @@ def main():
         sys.exit(1)
 
     for filename in files:
-	filename = os.path.join(rootdir, filename)
+        filename = os.path.join(rootdir, filename)
         print(filename)
+
+        # https://stackoverflow.com/questions/54439309/how-to-preserve-namespaces-when-parsing-xml-via-elementtree-in-python
+        namespaces = dict([node for _, node in ElementTree.iterparse(filename, events=['start-ns'])])
+        for ns in namespaces:
+            ElementTree.register_namespace(ns, namespaces[ns])
+        print(namespaces)
+
         with open(filename, 'rt') as f:
             tree = ElementTree.parse(f)
 
