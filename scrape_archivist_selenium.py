@@ -10,11 +10,12 @@ from selenium import webdriver
 import time
 import os
 
-base_url = "https://archivist.closer.ac.uk//"
+base_url = "https://archivist.closer.ac.uk"
 
 # Download geckodriver-v0.25.0-linux64.tar.gz from https://github.com/mozilla/geckodriver/releases
 # unpack the tar.gz: has single binary inside
-driver = webdriver.Firefox(executable_path="n:\Documents\gecko\geckodriver")
+driver = webdriver.Firefox(executable_path="/home/jenny/Documents/python_scripts.git/geckodriver")
+
 
 def archivist_login():
     url = base_url
@@ -25,10 +26,73 @@ def archivist_login():
     time.sleep(10)
 
 
+def archivist_get_all_xml_names():
+    """Get name and url for xml """
+
+    url = os.path.join(base_url, "admin", "export")
+    print(url)
+    driver.get(url)
+    time.sleep(10)
+
+    xml_name = {}
+    while True:
+        # div are trial-and-error: could change if webpage changed at all
+        trs = driver.find_elements_by_xpath("html/body/div/div/div/div/div/div/table/tbody/tr")
+        print("This page has {} rows".format(len(trs)))
+
+        # From all the links find instrument name
+        for i in range(1, len(trs)):
+            # row 0 is header: tr has "th" instead of "td"
+            tr = trs[i]
+
+            # column 1 (2nd column) is "ID"
+            xml_id = tr.find_elements_by_xpath("td")[1].text
+            print("  " + xml_id)
+            # column 6 (5th column) is "Action"
+            xml_location = tr.find_elements_by_xpath("td")[5].find_elements_by_xpath("a")[0].get_attribute("href")
+            if xml_location is not None:
+                print("  " + xml_location)
+            xml_name[xml_id] = xml_location
+
+        # next page
+        loadMoreButton = driver.find_element_by_link_text("Next")
+        if loadMoreButton.get_attribute("disabled") == "true":
+            break
+        loadMoreButton.click()
+        time.sleep(5)
+    return xml_name
+
+
+def archivist_download_xml(xml_name, output_dir):
+    """loop over xml_name dictionary, downloading xml"""
+
+    for key, value in xml_name.iteritems():
+        if value is not None:
+            print("Getting xml for " + key)
+            xml_url = value + ".xml"
+            driver.get(xml_url)
+
+            time.sleep(10)
+            print("  Downloading xml for " + key)
+            out_f = os.path.join(output_dir, key + ".xml")
+            # print(out_f)
+            with open(out_f, "w") as f:
+                try:
+                    f.write(driver.page_source.encode("utf-8"))
+                except UnicodeEncodeError:
+                    print 'Could not download Unicode: ', key
+                    continue
+                except IOError:
+                    print 'Could not download IO : ', key
+                    continue
+            time.sleep(3)
+
+
 def archivist_get_all_instrument_names():
     """Get a list of all instrument names"""
 
-    url = base_url+"instruments/"
+    url = os.path.join(base_url, "instruments")
+
     driver.get(url)
     time.sleep(10)
 
@@ -58,22 +122,6 @@ def archivist_get_all_instrument_names():
 def archivist_download_instruments(names, output_dir):
     """loop over names, downloading xml and txt files"""
     for x in names:
-        #print("Getting " + x + ".xml")
-        xml_url = base_url+"instruments/" + x + ".xml"
-        driver.get(xml_url)
-
-        time.sleep(10)
-        #print("  Downloading " + x + ".xml")
-        with open(os.path.join(output_dir, x + ".xml"), "w") as f:
-            try:
-                f.write(driver.page_source.encode("utf-8"))
-            except UnicodeEncodeError:
-                print 'Could not download Unicode: ', x
-                continue
-            except IOError:
-                print 'Could not download IO : ', x
-                continue
-        time.sleep(3)
 
         #print("Getting " + x + "/tq.txt")
         tq_url = base_url+"instruments/" + x + "/tq.txt"
@@ -115,7 +163,7 @@ def archivist_download_instruments(names, output_dir):
 
 def archivist_get_all_datasets():
 
-    datasets_url = base_url+"datasets/"
+    datasets_url = os.path.join(base_url, "datasets")
     driver.get(datasets_url)
     time.sleep(10)
 
@@ -146,7 +194,8 @@ def archivist_get_all_datasets():
 
 def archivist_download_dataset(id_list, output_dir):
     """loop through individual dataset ids, download txt files, rename"""
-    datasets_url = base_url+"datasets/"
+
+    datasets_url = os.path.join(base_url, "datasets")
 
     for x in id_list:
 
@@ -186,17 +235,24 @@ def archivist_download_dataset(id_list, output_dir):
 
 
 def main():
-    output_dir = "archivist"
+    output_dir = "../archivist"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     archivist_login()
 
+    xml_names = archivist_get_all_xml_names()
+    print("Got {} xml names".format(len(xml_names)))
+
+    with open("xml_names.txt", "w") as f:
+        f.writelines("{}\t{}\n".format(k, v) for k, v in xml_names.items())
+
+    archivist_download_xml(xml_names, output_dir)
+
     names = archivist_get_all_instrument_names()
-    #print("Got {} instrument names".format(len(names)))
+    print("Got {} instrument names".format(len(names)))
     with open("filenames.txt", "w") as f:
         f.write("\n".join(names))
-    #print(instrument_names)
 
     archivist_download_instruments(names, output_dir)
 
