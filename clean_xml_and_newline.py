@@ -6,15 +6,15 @@ Overwrite the original xml file with a middle of context line break replaced by 
 Also expand the escaped characters, for example: &#163; becomes £
 
 Line breaks in text are generally represented as:
-\r\n - on a windows computer
-\r - on an Apple computer
-\n - on Linux
+    \r\n - on a windows computer
+    \r - on an Apple computer
+    \n - on Linux
 """
 
 import re
 import os
 import sys
-from xml.etree import ElementTree
+from lxml import etree
 
 
 def main():
@@ -29,30 +29,22 @@ def main():
 
     for filename in files:
         filename = os.path.join(rootdir, filename)
-        print(filename)
-
-        # https://stackoverflow.com/questions/54439309/how-to-preserve-namespaces-when-parsing-xml-via-elementtree-in-python
-        namespaces = dict([node for _, node in ElementTree.iterparse(filename, events=['start-ns'])])
-        for ns in namespaces:
-            ElementTree.register_namespace(ns, namespaces[ns])
-        print(namespaces)
-
-        with open(filename, 'rt') as f:
-            tree = ElementTree.parse(f)
+        #print(filename)
+        p = etree.XMLParser(resolve_entities=True)
+        with open(filename, "rt") as f:
+            tree = etree.parse(f, p)
 
         for node in tree.iter():
-            # TODO: any other elements?
-            if not node.tag.lower() == "text":
-                continue
-            if re.search("\n|\r|\r\n", node.text):
-                node.text = node.text.replace("\r\n", " ")
-                node.text = node.text.replace("\r", " ")
-                node.text = node.text.replace("\n", " ")
+            if node.text is not None:
+                if re.search("\n|\r|\r\n", node.text.rstrip()):
+                    node.text = node.text.replace("\r\n", " ")
+                    node.text = node.text.replace("\r", " ")
+                    node.text = node.text.replace("\n", " ")
 
         # because encoding="UTF-8" in below options, the output can contain non-ascii characters, e.g. £
-        tree.write(filename,encoding="UTF-8",xml_declaration=True)
+        tree.write(filename, encoding="UTF-8", xml_declaration=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 

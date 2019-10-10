@@ -22,5 +22,11 @@
 
 ### Week 2 (Oct 7 - Oct 11)
 
-- [x] Scrape [Archivist](https://archivist.closer.ac.uk) continuous
-   - [x] Download all the `.txt` from [Datasets](https://archivist.closer.ac.uk/datasets)
+1. [x] Scrape [Archivist](https://archivist.closer.ac.uk) continuous
+   1. [x] Download all the `.txt` from [Datasets](https://archivist.closer.ac.uk/datasets)
+2. [x] Setup Heroku
+   1. Record how to insert table from file on [wiki](https://wiki.ucl.ac.uk/pages/viewpage.action?spaceKey=CTTEAM&title=Heroku+insert+table+from+a+csv+file)
+3. [x] Fix problems around ncds_81_i.xml:
+   1. could not download: fixed in [scrape_archivist_selenium.py](https://github.com/jli755/python_scripts/blob/master/scrape_archivist_selenium.py)
+   2. file contains `&amp;#` instead of `&#`: fixed in [clean_text.py](https://github.com/jli755/python_scripts/blob/master/clean_text.py)
+   3. Note: need to run clean_text.py first then clean_xml_and_newline.py 

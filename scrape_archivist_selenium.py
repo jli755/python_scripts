@@ -63,7 +63,7 @@ def archivist_download_instruments(names, output_dir):
         time.sleep(10)
         print("  Downloading " + x + ".xml")
         with open(os.path.join(output_dir, x + ".xml"), "w") as f:
-            f.write(driver.page_source)
+            f.write(driver.page_source.encode("utf-8"))
         time.sleep(3)
 
         print("Getting " + x + "/tq.txt")
