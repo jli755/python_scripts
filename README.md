@@ -30,3 +30,16 @@
    1. could not download: fixed in [scrape_archivist_selenium.py](https://github.com/jli755/python_scripts/blob/master/scrape_archivist_selenium.py)
    2. file contains `&amp;#` instead of `&#`: fixed in [clean_text.py](https://github.com/jli755/python_scripts/blob/master/clean_text.py)
    3. Note: need to run clean_text.py first then clean_xml_and_newline.py 
+
+## November 2019
+
+1. [x] Process NCDS_2004_tables_version5.xlsx
+    1. [pre_process_db_input.py](https://github.com/jli755/python_scripts/blob/master/pre_process_db_input.py)
+        - Output csv files 
+2. [x] Built database using above csv files, see [Populate database wiki](https://wiki.ucl.ac.uk/display/CTTEAM/Populate+database)
+    1. [db_temp.sql](https://github.com/jli755/python_scripts/blob/master/db_temp.sql)
+        - Insert all the ouput csv files from [pre_process_db_input.py](https://github.com/jli755/python_scripts/blob/master/pre_process_db_input.py) to temporary tables
+    2. [db_insert.sql](https://github.com/jli755/python_scripts/blob/master/db_insert.sql)
+        - From temporary tables, insert to database tables
+    3. [db_delete.sql](https://github.com/jli755/python_scripts/blob/master/db_delete.sql)
+        - Delete a study
