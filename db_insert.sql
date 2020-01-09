@@ -159,12 +159,11 @@ left join categories c on a.category = c.label and c.instrument_id = (select id 
 SELECT pg_sleep(5);
 
 -- 10. cc_conditions;
-INSERT INTO cc_conditions (instrument_id, label, literal, logic, parent_id, parent_type, position, branch, created_at, updated_at)
+INSERT INTO cc_conditions (instrument_id, label, literal, logic, parent_type, position, branch, created_at, updated_at)
 (select b.id,
         a.Label,
         a.Literal,
         a.Logic,
-        d.id,
         a.Parent_type,
         a.Position,
         a.branch,
@@ -172,19 +171,17 @@ INSERT INTO cc_conditions (instrument_id, label, literal, logic, parent_id, pare
         current_timestamp
 from jenny_conditions a
 cross join instruments b
-left join cc_sequences d on a.above_label = d.label and d.instrument_id = b.id
 where b.prefix = 'ncds_04_cai');
  
 SELECT pg_sleep(5);
 
 -- 11. cc_loops;
-INSERT INTO cc_loops (label, start_val, end_val, loop_while, loop_var, parent_id, parent_type, position, branch, created_at, updated_at, instrument_id)
+INSERT INTO cc_loops (label, start_val, end_val, loop_while, loop_var, parent_type, position, branch, created_at, updated_at, instrument_id)
 (select a.label,
         a.start_value,
         a.end_value,
         a.loop_while,
         a.logic,
-        d.id,
         a.Parent_type,
         a.Position,
         a.branch,
@@ -193,10 +190,11 @@ INSERT INTO cc_loops (label, start_val, end_val, loop_while, loop_var, parent_id
         b.id
 from jenny_loops a
 cross join instruments b
-left join cc_sequences d on a.above_label = d.label and d.instrument_id = b.id
 where b.prefix = 'ncds_04_cai');
 
 SELECT pg_sleep(5);
+
+
 
 -- 12. instructions;
 INSERT INTO instructions (text, created_at, updated_at, instrument_id)
@@ -269,6 +267,24 @@ cross join instruments c
 left join question_items b on a.label = b.label and b.instrument_id = c.id
 left join response_units d on c.id = d.instrument_id and d.instrument_id = c.id
 join cc_conditions g on a.above_label = g.label and g.instrument_id = c.id
+where c.prefix = 'ncds_04_cai'
+UNION
+select c.id,
+b.id as question_id,
+'QuestionItem',
+d.id,
+current_timestamp,
+current_timestamp,
+a.label,
+h.id,
+a.parent_type,
+a.position,
+a.branch
+from jenny_questions a
+cross join instruments c
+left join question_items b on a.label = b.label and b.instrument_id = c.id
+left join response_units d on c.id = d.instrument_id and d.instrument_id = c.id
+join cc_loops h on a.above_label = h.label and h.instrument_id = c.id
 where c.prefix = 'ncds_04_cai');
 
 SELECT pg_sleep(5);
@@ -304,4 +320,51 @@ join cc_questions ccq on a.label = ccq.label and ccq.instrument_id = instruments
 join response_domain_texts e on a.response_domain = e.label and e.instrument_id = instruments.id
 where instruments.prefix = 'ncds_04_cai'
 );
-  
+
+
+-- update parent_id for cc_conditions and cc_loops;
+with t as (
+    select old.id as row_id, 
+           COALESCE(s.id, c.id, l.id) as parent_id, 
+           a.parent_type as parent_type, 
+           a.position as position, 
+           current_timestamp as updated_at
+    from cc_loops old
+    join jenny_loops a on a.label = old.label
+    cross join instruments b
+    left join cc_sequences s on a.above_label = s.label and s.instrument_id = b.id
+    left join cc_conditions c on a.above_label = c.label and c.instrument_id = b.id
+    left join cc_loops l on a.above_label = l.label and l.instrument_id = b.id
+    where b.prefix = 'ncds_04_cai'
+)
+update cc_loops
+set parent_id = t.parent_id,
+    parent_type = t.parent_type,
+    position = t.position,
+    updated_at = t.updated_at
+from t 
+where id = t.row_id;
+
+
+with t as (
+    select old.id as row_id, 
+           COALESCE(s.id, c.id, l.id) as parent_id, 
+           a.parent_type as parent_type, 
+           a.position as position, 
+           current_timestamp as updated_at
+    from cc_conditions old
+    join jenny_conditions a on a.label = old.label
+    cross join instruments b
+    left join cc_sequences s on a.above_label = s.label and s.instrument_id = b.id
+    left join cc_conditions c on a.above_label = c.label and c.instrument_id = b.id
+    left join cc_loops l on a.above_label = l.label and l.instrument_id = b.id
+    where b.prefix = 'ncds_04_cai'
+)
+update cc_conditions
+set parent_id = t.parent_id,
+    parent_type = t.parent_type,
+    position = t.position,
+    updated_at = t.updated_at
+from t 
+where id = t.row_id;
+
