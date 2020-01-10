@@ -8,7 +8,6 @@ import os
 import pandas as pd
 import numpy as np
 from datetime import date
-from difflib import SequenceMatcher
 
 def main():
     input_dir = '../NCDS_2004'
@@ -21,7 +20,7 @@ def main():
     for sheet_name in dfs.keys():
         print(sheet_name)
 
-    fn_end = os.path.join(input_dir, 'NCDS_2004_tables_version8_1.xlsx') 
+    fn_end = os.path.join(input_dir, 'NCDS_2004_tables_version8_jenny.xlsx') 
     # creating pandas.io.excel.ExcelFile object
     xl_end = pd.ExcelFile(fn_end)
     #  generate a dictionary of DataFrames
@@ -93,6 +92,12 @@ def main():
     df_conditions = dfs_end['Conditions']
     df_conditions.rename(columns={'Start point of the condition': 'Order', 'End point of the condition': 'End'}, inplace=True)
     df_conditions['source'] = 'Conditions'
+    
+    df_conditions['nested_position'] = df_conditions.groupby(['End']).cumcount()
+    df_conditions['above'] = df_conditions.apply(lambda x: x['Label'] if x['nested_position'] == 0 else np.nan, axis = 1) 
+    df_conditions.loc[:, 'above'] = df_conditions.loc[:,'above'].ffill()
+    df_conditions['above'] = df_conditions.apply(lambda x: '' if x['nested_position'] == 0 else x['Label'], axis = 1)
+
 
     """
     5. Loops
@@ -100,6 +105,10 @@ def main():
     df_loops = dfs_end['Loops']
     df_loops.rename(columns={'Start point of the loop': 'Order', 'End point of the loop': 'End'}, inplace=True)
     df_loops['source'] = 'Loops'
+    df_loops['nested_position'] = df_loops.groupby(['End']).cumcount() 
+    df_loops['above'] = df_loops.apply(lambda x: x['Label'] if x['nested_position'] == 0 else np.nan, axis = 1) 
+    df_loops.loc[:, 'above'] = df_loops.loc[:,'above'].ffill()
+    df_loops['above'] = df_loops.apply(lambda x: '' if x['nested_position'] == 0 else x['Label'], axis = 1)
 
 
     """
@@ -109,7 +118,7 @@ def main():
 		- every condition/loop will follow by one question, unless all questions have similar name
     """
 
-    keep_columns = ['Order', 'End', 'Label', 'source', 'section_id']
+    keep_columns = ['Order', 'End', 'Label', 'source', 'section_id','nested_position', 'above']
     df_all = pd.concat([df_sequences.loc[:, keep_columns], df_questions.loc[:, keep_columns], df_conditions.loc[:, keep_columns], df_loops.loc[:, keep_columns]])
     df_all = df_all.sort_values('Order').reset_index()
 
@@ -152,11 +161,11 @@ def main():
             df_all.at[index, 'above_loop'] = l_label_curr	
 
     # loop mask
-    mask_loops = df_all['above_loop'].notnull()
-    df_all['l_position'] = df_all[mask_loops].groupby(['above_loop', 'above_condition']).cumcount() + 1
+    mask_loops =  (~((df_all['c_position'] >= 1) | (df_all['nested_position'] >= 1))) & df_all['above_loop'].notnull()
+    df_all['l_position'] = df_all[mask_loops].groupby(['above_loop']).cumcount() + 1
 
     # order within section
-    mask_section = ~((df_all['section_id'] >= 1) | (df_all['c_position'] >= 1) | (df_all['l_position'] >= 1))
+    mask_section = ~((df_all['section_id'] >= 1) | (df_all['c_position'] >= 1) | (df_all['l_position'] >= 1) | (df_all['nested_position'] >= 1))
     df_all.loc[:, 'section_id'] = df_all.loc[:, 'section_id'].ffill()
     df_all['section_position'] = df_all[mask_section].groupby('section_id').cumcount() + 1 
 
@@ -164,11 +173,14 @@ def main():
     df_sequences_m.rename(columns={'Label': 'section_label'}, inplace=True)
     df_all_new = pd.merge(df_all, df_sequences_m, how='left', on=['section_id'])
 
-    df_all_new['Position'] = df_all_new.apply(lambda x: max(x['section_id'], x['c_position'], x['section_position']) if x['l_position'] != 1 else 1, axis=1)
+    df_all_new['Position'] = df_all_new.apply(lambda x: max(x['section_id'], x['c_position'], x['section_position'], x['l_position'] ) if x['l_position'] != 1 else 1, axis=1)
     df_all_new['above_condition'] = df_all_new['above_condition'].fillna("")
     df_all_new['above_loop'] = df_all_new['above_loop'].fillna("")
-    df_all_new['above_label'] = df_all_new.apply(lambda x: x['above_condition'] if len(x['above_condition']) > 0 else x['above_loop'] if len(x['above_loop']) > 0 else x['section_label'], axis = 1)
-    df_all_new['parent_type'] = df_all_new.apply(lambda x: 'CcCondition' if len(x['above_condition']) > 0 else 'CcLoop' if len(x['above_loop']) > 0 else 'CcSequence', axis = 1)
+    df_all_new['above'] = df_all_new['above'].fillna("")
+    df_all_new['above_label'] = df_all_new.apply(lambda x: x['above_condition'] if len(x['above_condition']) > 0 
+                                                           else x['above_loop'] if len(x['above_loop']) > 0 
+                                                           else x['section_label'], axis = 1)
+    df_all_new['parent_type'] = df_all_new['above_label'].apply(lambda x: 'CcCondition' if x[0:1] == 'c'  else 'CcLoop' if x[0:1] == 'l' else 'CcSequence')
 
     df_all_new['branch'] = 0
     cols = ['section_id', 'branch', 'Position']
