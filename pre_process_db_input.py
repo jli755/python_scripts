@@ -93,10 +93,11 @@ def main():
     df_conditions.rename(columns={'Start point of the condition': 'Order', 'End point of the condition': 'End'}, inplace=True)
     df_conditions['source'] = 'Conditions'
     
-    df_conditions['nested_position'] = df_conditions.groupby(['End']).cumcount()
-    df_conditions['above'] = df_conditions.apply(lambda x: x['Label'] if x['nested_position'] == 0 else np.nan, axis = 1) 
+    df_conditions['nested_position'] = df_conditions.groupby(['End']).cumcount() + 1
+    df_conditions['above'] = df_conditions.apply(lambda x: x['Label'] if x['nested_position'] == 1 else np.nan, axis = 1)
+    
     df_conditions.loc[:, 'above'] = df_conditions.loc[:,'above'].ffill()
-    df_conditions['above'] = df_conditions.apply(lambda x: '' if x['nested_position'] == 0 else x['Label'], axis = 1)
+    df_conditions['above'] = df_conditions.apply(lambda x: '' if x['nested_position'] == 1 else x['above'], axis = 1)
 
 
     """
@@ -105,10 +106,10 @@ def main():
     df_loops = dfs_end['Loops']
     df_loops.rename(columns={'Start point of the loop': 'Order', 'End point of the loop': 'End'}, inplace=True)
     df_loops['source'] = 'Loops'
-    df_loops['nested_position'] = df_loops.groupby(['End']).cumcount() 
-    df_loops['above'] = df_loops.apply(lambda x: x['Label'] if x['nested_position'] == 0 else np.nan, axis = 1) 
+    df_loops['nested_position'] = df_loops.groupby(['End']).cumcount() + 1
+    df_loops['above'] = df_loops.apply(lambda x: x['Label'] if x['nested_position'] == 1 else np.nan, axis = 1) 
     df_loops.loc[:, 'above'] = df_loops.loc[:,'above'].ffill()
-    df_loops['above'] = df_loops.apply(lambda x: '' if x['nested_position'] == 0 else x['Label'], axis = 1)
+    df_loops['above'] = df_loops.apply(lambda x: '' if x['nested_position'] == 1 else x['above'], axis = 1)
 
 
     """
@@ -165,7 +166,9 @@ def main():
     df_all['l_position'] = df_all[mask_loops].groupby(['above_loop']).cumcount() + 1
 
     # order within section
-    mask_section = ~((df_all['section_id'] >= 1) | (df_all['c_position'] >= 1) | (df_all['l_position'] >= 1) | (df_all['nested_position'] >= 1))
+    #TODO: fix this
+    mask_section = ~((df_all['nested_position'] >= 2) | (df_all['c_position'] >= 1) | (df_all['l_position'] >= 1))
+ 
     df_all.loc[:, 'section_id'] = df_all.loc[:, 'section_id'].ffill()
     df_all['section_position'] = df_all[mask_section].groupby('section_id').cumcount() + 1 
 
@@ -173,11 +176,21 @@ def main():
     df_sequences_m.rename(columns={'Label': 'section_label'}, inplace=True)
     df_all_new = pd.merge(df_all, df_sequences_m, how='left', on=['section_id'])
 
-    df_all_new['Position'] = df_all_new.apply(lambda x: max(x['section_id'], x['c_position'], x['section_position'], x['l_position'] ) if x['l_position'] != 1 else 1, axis=1)
+
+    # change first nested position to nan
+    df_all_new['nested_position'] = df_all_new['nested_position'].apply(lambda x: np.nan if x == 1 else x)
+
+    df_all_new['Position'] = df_all_new.apply(lambda row: 
+                             next(item for item in (row['nested_position'], row['c_position'], row['section_position'], row['l_position'], np.nan) 
+                                  if not np.isnan(item)) 
+                             if row['l_position'] != 1 else 1, 
+                             axis=1)
+
     df_all_new['above_condition'] = df_all_new['above_condition'].fillna("")
     df_all_new['above_loop'] = df_all_new['above_loop'].fillna("")
     df_all_new['above'] = df_all_new['above'].fillna("")
-    df_all_new['above_label'] = df_all_new.apply(lambda x: x['above_condition'] if len(x['above_condition']) > 0 
+    df_all_new['above_label'] = df_all_new.apply(lambda x: x['above'] if len(x['above']) > 0
+                                                           else x['above_condition'] if len(x['above_condition']) > 0 
                                                            else x['above_loop'] if len(x['above_loop']) > 0 
                                                            else x['section_label'], axis = 1)
     df_all_new['parent_type'] = df_all_new['above_label'].apply(lambda x: 'CcCondition' if x[0:1] == 'c'  else 'CcLoop' if x[0:1] == 'l' else 'CcSequence')
