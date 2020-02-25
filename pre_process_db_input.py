@@ -96,6 +96,10 @@ def main():
     df_questions.rename(columns={'Number': 'Order'}, inplace=True)
     # replace 'qi' with 'qc' in Label column
     df_questions['Label'] = df_questions['Label'].str.replace('qi_', 'qc_')
+    # replace '&' with '_' in Label column
+    df_questions['Label'] = df_questions['Label'].str.replace('&', '_')
+    # replace 'qc_qc_' with 'qc_'
+    df_questions['Label'] = df_questions['Label'].str.replace('qc_qc_', 'qc_')
 
     # replace label with new_label from codes dataframe
     df_questions["Response domain"].replace(modify_lable_dict, inplace=True) 
@@ -115,6 +119,8 @@ def main():
     df_conditions = dfs_end['Conditions']
     df_conditions.rename(columns={'Start point of the condition': 'Order', 'End point of the condition': 'End'}, inplace=True)
     df_conditions['source'] = 'Conditions'
+    # replace '&' with '_' in Label column
+    df_conditions['Label'] = df_conditions['Label'].str.replace('&', '_')
 
     """
     5. Loops
@@ -122,6 +128,9 @@ def main():
     df_loops = dfs_end['Loops']
     df_loops.rename(columns={'Start point of the loop': 'Order', 'End point of the loop': 'End'}, inplace=True)
     df_loops['source'] = 'Loops'
+    # replace '&' with '_' in Label column
+    df_loops['Label'] = df_loops['Label'].str.replace('&', '_')
+
 
     """
     position of question/condition/loop
