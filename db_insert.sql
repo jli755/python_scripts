@@ -6,12 +6,12 @@
 INSERT INTO instruments (agency, version, prefix, label, study, created_at, updated_at, slug)
 VALUES ('uk.cls.ncds',
         '1.0',
-        'ncds_04_cai',
+        'ncds_04_cai_test',
         'NCDS7 CAI Questionnaire (2004)',
         'NCDS',
         current_timestamp,
         current_timestamp,
-        'ncds_04_cai');
+        'ncds_04_cai_test');
 
 -- 2. cc_sequences;
 INSERT INTO cc_sequences (instrument_id, created_at, updated_at)
@@ -19,7 +19,7 @@ INSERT INTO cc_sequences (instrument_id, created_at, updated_at)
         current_timestamp,
         current_timestamp
 from instruments
-where prefix = 'ncds_04_cai');
+where prefix = 'ncds_04_cai_test');
 -- INSERT 0 1
  
 SELECT pg_sleep(5);
@@ -35,7 +35,7 @@ INSERT INTO cc_sequences (instrument_id, created_at, updated_at, label, parent_i
         0
 from cc_sequences a
 left join instruments b on b.id = a.instrument_id
-where b.prefix = 'ncds_04_cai'
+where b.prefix = 'ncds_04_cai_test'
 and a.label is null);
 -- INSERT 0 1
  
@@ -52,7 +52,7 @@ INSERT INTO cc_sequences (instrument_id, created_at, updated_at, label, parent_i
         0
 from jenny_sequences a
 cross join cc_sequences b
-where b.label= 'ncds_04_cai');
+where b.label= 'ncds_04_cai_test');
 -- INSERT 0 21
 
 SELECT pg_sleep(5);
@@ -70,7 +70,7 @@ INSERT INTO response_domain_numerics (numeric_type, label, min, max, created_at,
 from Jenny_response a
 cross join instruments b
 where a.type = 'Numeric'
-and b.prefix = 'ncds_04_cai');
+and b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -85,7 +85,7 @@ INSERT INTO response_domain_texts (label, maxlen, created_at, updated_at, instru
 from Jenny_response a
 cross join instruments b
 where a.type = 'Text'
-and prefix = 'ncds_04_cai');
+and prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -100,7 +100,7 @@ INSERT INTO response_domain_datetimes (datetime_type, label, created_at, updated
 from Jenny_response a
 cross join instruments b
 where a.type = 'Datetime'
-and b.prefix = 'ncds_04_cai');
+and b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -112,7 +112,7 @@ INSERT INTO code_lists (label, created_at, updated_at, instrument_id)
                  b.id
 from jenny_codes a
 cross join instruments b
-where b.prefix = 'ncds_04_cai');
+where b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -127,7 +127,7 @@ INSERT INTO response_domain_codes (code_list_id, created_at, updated_at, respons
         1
 from code_lists a
 cross join instruments b
-where b.prefix = 'ncds_04_cai');
+where b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -139,7 +139,7 @@ INSERT INTO categories (label, created_at, updated_at, instrument_id)
         b.id
 from jenny_codes a
 cross join instruments b
-where b.prefix = 'ncds_04_cai');
+where b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -153,8 +153,8 @@ INSERT INTO codes (value, "order", code_list_id, category_id, created_at, update
         current_timestamp,
         c.instrument_id
 from jenny_codes a
-left join code_lists b on a.label = b.label and b.instrument_id = (select id from instruments where prefix = 'ncds_04_cai')
-left join categories c on a.category = c.label and c.instrument_id = (select id from instruments where prefix = 'ncds_04_cai') );
+left join code_lists b on a.label = b.label and b.instrument_id = (select id from instruments where prefix = 'ncds_04_cai_test')
+left join categories c on a.category = c.label and c.instrument_id = (select id from instruments where prefix = 'ncds_04_cai_test') );
 
 SELECT pg_sleep(5);
 
@@ -171,7 +171,7 @@ INSERT INTO cc_conditions (instrument_id, label, literal, logic, parent_type, po
         current_timestamp
 from jenny_conditions a
 cross join instruments b
-where b.prefix = 'ncds_04_cai');
+where b.prefix = 'ncds_04_cai_test');
  
 SELECT pg_sleep(5);
 
@@ -190,7 +190,7 @@ INSERT INTO cc_loops (label, start_val, end_val, loop_while, loop_var, parent_ty
         b.id
 from jenny_loops a
 cross join instruments b
-where b.prefix = 'ncds_04_cai');
+where b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -204,7 +204,7 @@ INSERT INTO instructions (text, created_at, updated_at, instrument_id)
         b.id
 from jenny_questions a
 cross join instruments b
-where b.prefix = 'ncds_04_cai');
+where b.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -219,7 +219,7 @@ b.id,
 from jenny_questions a
 cross join instruments c
 left join instructions b on a.instructions = b.text and b.instrument_id = c.id
-where c.prefix = 'ncds_04_cai');
+where c.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -228,7 +228,7 @@ SELECT pg_sleep(5);
 INSERT INTO response_units (label, created_at, updated_at, instrument_id)
 (SELECT 'Cohort/sample member', current_timestamp, current_timestamp, id
 FROM instruments
-WHERE prefix = 'ncds_04_cai');
+WHERE prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -249,7 +249,7 @@ cross join instruments c
 left join question_items b on a.label = b.label and b.instrument_id = c.id
 left join response_units d on c.id = d.instrument_id and d.instrument_id = c.id
 join cc_sequences f on a.above_label = f.label and f.instrument_id = c.id
-where c.prefix = 'ncds_04_cai'
+where c.prefix = 'ncds_04_cai_test'
 UNION
 select c.id,
 b.id as question_id,
@@ -267,7 +267,7 @@ cross join instruments c
 left join question_items b on a.label = b.label and b.instrument_id = c.id
 left join response_units d on c.id = d.instrument_id and d.instrument_id = c.id
 join cc_conditions g on a.above_label = g.label and g.instrument_id = c.id
-where c.prefix = 'ncds_04_cai'
+where c.prefix = 'ncds_04_cai_test'
 UNION
 select c.id,
 b.id as question_id,
@@ -285,7 +285,7 @@ cross join instruments c
 left join question_items b on a.label = b.label and b.instrument_id = c.id
 left join response_units d on c.id = d.instrument_id and d.instrument_id = c.id
 join cc_loops h on a.above_label = h.label and h.instrument_id = c.id
-where c.prefix = 'ncds_04_cai');
+where c.prefix = 'ncds_04_cai_test');
 
 SELECT pg_sleep(5);
 
@@ -297,28 +297,28 @@ cross join instruments
 join cc_questions ccq on a.label = ccq.label and ccq.instrument_id = instruments.id
 join code_lists f on a.Response_domain = f.label and f.instrument_id = instruments.id
 join response_domain_codes b on f.id = b.code_list_id and b.instrument_id = instruments.id
-where instruments.prefix = 'ncds_04_cai'
+where instruments.prefix = 'ncds_04_cai_test'
 union
 select ccq.instrument_id, ccq.question_id, ccq.question_type, null, c.id, c.response_domain_type, current_timestamp, current_timestamp, 1
 from jenny_questions a
 cross join instruments
 join cc_questions ccq on a.label = ccq.label and ccq.instrument_id = instruments.id
 join response_domain_datetimes c on a.response_domain = c.label and c.instrument_id = instruments.id
-where instruments.prefix = 'ncds_04_cai'
+where instruments.prefix = 'ncds_04_cai_test'
 union
 select ccq.instrument_id, ccq.question_id, ccq.question_type, null, d.id, d.response_domain_type, current_timestamp, current_timestamp, 1
 from jenny_questions a
 cross join instruments
 join cc_questions ccq on a.label = ccq.label and ccq.instrument_id = instruments.id
 join response_domain_numerics d on a.response_domain = d.label and d.instrument_id = instruments.id
-where instruments.prefix = 'ncds_04_cai'
+where instruments.prefix = 'ncds_04_cai_test'
 union
 select ccq.instrument_id, ccq.question_id, ccq.question_type, null, e.id, e.response_domain_type, current_timestamp, current_timestamp, 1
 from jenny_questions a
 cross join instruments
 join cc_questions ccq on a.label = ccq.label and ccq.instrument_id = instruments.id
 join response_domain_texts e on a.response_domain = e.label and e.instrument_id = instruments.id
-where instruments.prefix = 'ncds_04_cai'
+where instruments.prefix = 'ncds_04_cai_test'
 );
 
 
@@ -335,7 +335,7 @@ with t as (
     left join cc_sequences s on a.above_label = s.label and s.instrument_id = b.id
     left join cc_conditions c on a.above_label = c.label and c.instrument_id = b.id
     left join cc_loops l on a.above_label = l.label and l.instrument_id = b.id
-    where b.prefix = 'ncds_04_cai'
+    where b.prefix = 'ncds_04_cai_test'
 )
 update cc_loops
 set parent_id = t.parent_id,
@@ -358,7 +358,7 @@ with t as (
     left join cc_sequences s on a.above_label = s.label and s.instrument_id = b.id
     left join cc_conditions c on a.above_label = c.label and c.instrument_id = b.id
     left join cc_loops l on a.above_label = l.label and l.instrument_id = b.id
-    where b.prefix = 'ncds_04_cai'
+    where b.prefix = 'ncds_04_cai_test'
 )
 update cc_conditions
 set parent_id = t.parent_id,
