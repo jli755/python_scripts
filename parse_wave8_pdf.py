@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/bin/env python3
 
 """  
     Python 3
@@ -109,8 +109,22 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                 continue
 
             # funny hack b/c sections can be inside loops but are not marked so
+            # TODO: this breaks anytime a section ends with a conditional
             if line.startswith('Section'):
-                line = '|'*depth + line
+                print("="*78)
+                print("found a section, might hack...")
+                print(L)
+                tmp = line.lstrip('Section ')
+                tmp = tmp.split(' ')[0]
+                tmp = float(tmp)
+                print(tmp)
+                # TODO: oh my, harded for this file
+                if tmp <= 8.12:
+                    print("we think this is a nested section, so hacking")
+                    line = '|'*depth + line
+                else:
+                    print("no we are not hacking this section, not nested?")
+                print("="*78)
 
             def startsWithNPipes(s, n):
                 return s.count('|') == n and line[0:n] == '|'*n
@@ -137,16 +151,25 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                   b = L.pop()
                   print('d{}]{}: conditional ended: "{}" back to "{}"'.format(depth, num, b[1], L[-1][1]))
                   depth = depth - 1
+                  print(L)
                assert depth >= 0
                line = line.lstrip('| ')          
 
-
-            if line.startswith('Section'):
+            if line.startswith('Section') or line.startswith('MODULE'):
                # depth unchanged but reset pos and new parent name
+               print('='*78)
+               if line.startswith('Section 8.13'):
+                   print(depth)
+                   print(m)
+                   print(numberOfPipesAtStart(line))
+                   print(line)
+               print(L)
                L[-1] = [0, line]
+               #if line.startswith('Section 8.13'):
+               print(L)
+               print('='*78)
                continue  # TODO?  really?  output somewhere?
 
-            
             # problem with line 583 or so | QI_Hist8_Date 
             # see "Hist8=1,2,3,6" in pdf
             # hacked parsed output to add "| IF Hist8=..."
@@ -155,19 +178,24 @@ def get_condition(key_file, order_condition, order_loop, order_question):
             # 695 delete one line
             # 746 del
             # 762 del
-            
+
             elif line.startswith('IF'):
+               # line = line.encode("unicode_escape").decode()  # get rid of non-ascii in IF
+               print(L)
                L[-1][0] += 1
                pos = L[-1][0]
                parent = L[-1][1]
+               print(L)
+               if line.startswith('IF FieldSerial'):
+                   print(("***", line, parent))
                global_loop += 1
                label = 'c_IF_{}'.format(global_loop)
                #label = line.lstrip('IF ')])
                depth = depth + 1
                L.append([0, label])
                # TODO: output
-               print('[d{}]{}: IF w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
-               if parent.startswith('Section'):
+               #print('[d{}]{}: IF w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
+               if parent.startswith('Section') or parent.startswith('MODULE'):
                    parent_type = 'CcSequence'
                elif parent.startswith('c_IF'):
                    parent_type = 'CcCondition'
@@ -187,7 +215,7 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                L.append([0, label])
                # TODO: output
                print('[d{}]{}: LOOP w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
-               if parent.startswith('Section'):
+               if parent.startswith('Section') or parent.startswith('MODULE'):
                    parent_type = 'CcSequence'
                elif parent.startswith('c_IF'):
                    parent_type = 'CcCondition'
@@ -421,7 +449,7 @@ def generate_code_list(txt_file, question_file, output_code):
                     for j in range(0, len(code_list)):
                         value = code_list[j][0]
                         cat = code_list[j][1]
-                        print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
+                        #print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
                         out_code.write('%s;%4d;%s;%4d\n' %(name, int(value), cat, j+1))
                 elif len(c) == 4:
                     name = "cs_{}_horizontal".format(L[i])
@@ -430,7 +458,7 @@ def generate_code_list(txt_file, question_file, output_code):
                     for j in range(0, len(code_list)):
                         value = code_list[j][0]
                         cat = code_list[j][1]
-                        print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
+                        #print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
                         out_code.write('%s;%4d;%s;%4d\n' %(name, int(value), cat, j+1))
                     name = "cs_{}_vertical".format(L[i])
                     assert c[2] == 'VERTICAL'
@@ -438,7 +466,7 @@ def generate_code_list(txt_file, question_file, output_code):
                     for j in range(0, len(code_list)):
                         value = code_list[j][0]
                         cat = code_list[j][1]
-                        print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
+                        #print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
                         out_code.write('%s;%4d;%s;%4d\n' %(name, int(value), cat, j+1))
                 elif len(c) == 0:
                     pass
@@ -447,7 +475,6 @@ def generate_code_list(txt_file, question_file, output_code):
                     raise ValueError("unexpected return")
       
 def main():
-
     base_dir = '../LSYPE1/wave8-xml/pdf'
     wave8_pdf = os.path.join(base_dir, 'wave8.pdf')
     out_file = os.path.join(base_dir, 'wave8_all_pages.txt')
