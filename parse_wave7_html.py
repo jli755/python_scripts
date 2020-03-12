@@ -272,6 +272,9 @@ def main():
     # only question items here
     df_question_items = df_question_answer[~df_question_answer["Literal"].str.contains('GRID: FOR EACH ITEM', na=False)]
 
+    # fill missing question literal with "?"
+    df_question_items['Literal'].fillna('?', inplace=True)
+
     df_question_items.to_csv('../LSYPE1/wave7-html/df_question_items.csv', encoding = 'utf-8', index=False)
 	
     # question grids
@@ -328,7 +331,7 @@ def main():
     df_conditions['Logic_c'] = df_conditions['title'].apply(lambda x: re.findall('(?<=\().*(?=\))', x))
     df_conditions['Logic_c1'] = df_conditions['Logic_c'].apply(lambda x: '' if len(x) ==0 else x[0])
 
-    df_conditions['Logic_r'] = df_conditions['Logic_c1'].str.replace('=', ' == ').str.replace('<>', '!=').str.replace('OR', '||').str.replace('and', '&&')
+    df_conditions['Logic_r'] = df_conditions['Logic_c1'].str.replace('=', ' == ').str.replace('<>', ' != ').str.replace(' OR ', ' || ').str.replace(' AND ', ' && ').str.replace(' or ', ' || ').str.replace(' and ', ' && ')
 
     df_conditions['Logic_name'] = df_conditions['title'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x)) 
     df_conditions['Logic_name1'] = df_conditions['Logic_name'].apply(lambda x: '' if len(x) ==0 else x[0][0])
