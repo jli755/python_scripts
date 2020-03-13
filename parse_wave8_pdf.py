@@ -91,14 +91,24 @@ def get_condition(key_file, order_condition, order_loop, order_question):
     question_names = []
     sequences = ['IF', '| IF', '|| IF', '||| IF']
 
-    with open(key_file) as in_file, open(order_condition, 'w+') as out_condition, open(order_loop, 'w+') as out_loop, open(order_question, 'w+') as out_question:
+    # get the whole input as a list (so we can zip it later)
+    with open(key_file) as in_file:
+        content = in_file.readlines()
+    # now in_file is a list
+    in_file = content
+    in_file.append("DUMMY LINE TO BE IGNORED FOR ZIP")
+    
+
+    with open(order_condition, 'w+') as out_condition, open(order_loop, 'w+') as out_loop, open(order_question, 'w+') as out_question:
         out_condition.write('Label;Literal;above_label;parent_type;Position\n')
         out_loop.write('Label;Loop_While;above_label;parent_type;Position\n')
         out_question.write('Label;above_label;Position\n')
 
         L = []
         depth = 0
-        for num, line in enumerate(in_file, 1):
+        #for num, line in enumerate(in_file, 1):
+        # Sometimes want nextline as well
+        for num, (line, nextline) in enumerate(zip(in_file, in_file[1:]), 1):
             line = line.rstrip()
             if num == 1:
                 assert line.startswith("MODULE")
@@ -108,23 +118,6 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                 L.append([0, modname])
                 continue
 
-            # funny hack b/c sections can be inside loops but are not marked so
-            # TODO: this breaks anytime a section ends with a conditional
-            if line.startswith('Section'):
-                print("="*78)
-                print("found a section, might hack...")
-                print(L)
-                tmp = line.lstrip('Section ')
-                tmp = tmp.split(' ')[0]
-                tmp = float(tmp)
-                print(tmp)
-                # TODO: oh my, harded for this file
-                if tmp <= 8.12:
-                    print("we think this is a nested section, so hacking")
-                    line = '|'*depth + line
-                else:
-                    print("no we are not hacking this section, not nested?")
-                print("="*78)
 
             def startsWithNPipes(s, n):
                 return s.count('|') == n and line[0:n] == '|'*n
@@ -136,6 +129,24 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                        n += 1
                    else:
                        return n
+
+            # funny hack b/c sections can be inside loops but are not marked so
+            # so we check the next line too
+            if line.startswith('Section'):
+                print("="*78)
+                print("We are {} deep, found a section, might hack...".format(depth))
+                print(L)
+                print(line)
+                print(nextline)
+                #if startsWithNPipes(nextline, depth):
+                if nextline.startswith('|'):  # any number of pipes
+                    print("we think this is a nested section")
+                    tmp = numberOfPipesAtStart(nextline)
+                    print("the line after as {0} pipes so hacking {0} pipes onto the section".format(tmp))
+                    line = '|'*tmp + line
+                else:
+                    print("no we are not hacking this section, not nested")
+                print("="*78)
 
             m = numberOfPipesAtStart(line)
             if m == depth:
@@ -288,6 +299,7 @@ def get_question_item(question_item, order_question):
     df_order['new_name'] = df_order['Label'].map(lambda x: re.sub('(_\d+)$', '', x))
 
     df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='inner', left_on='Name', right_on='new_name')
+    df_QI.to_csv('TEMP.csv', sep = ';', index=False)
  
     df_QI['code_name_old'] = 'cs_' + df_QI['Label_y']
     df_QI['code_name'] = df_QI['code_name_old'].map(lambda x: re.sub('(_\d+)$', '', x))
@@ -479,7 +491,8 @@ def main():
     wave8_pdf = os.path.join(base_dir, 'wave8.pdf')
     out_file = os.path.join(base_dir, 'wave8_all_pages.txt')
     key_file = os.path.join(base_dir, 'wave8_all_keys.txt')
-    order_question = os.path.join(base_dir, 'wave8_order_question.csv')
+    #order_question = os.path.join(base_dir, 'wave8_order_question.csv')
+    order_question = "bar.csv"
     
 
     db_input_dir = '../LSYPE1/wave8-xml/db_temp_input'
