@@ -321,32 +321,48 @@ def get_conditions(df):
     """
     df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title']]
 
+    # if can not parse (a=b), use the name of the NEXT question
+    df_conditions['next_question'] = df_conditions['questions'].shift(-1)
+
     df_conditions['Logic_name'] = df_conditions['title'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x) ) 
     df_conditions['Logic_name1'] = df_conditions['Logic_name'].apply(lambda x: '' if len(x) ==0 else x[0][0])
-    df_conditions['Logic_name2'] = df_conditions.apply(lambda row: row['questions'].strip() if (row['Logic_name1'].isdigit() or row['Logic_name1'] == '') else row['Logic_name1'].strip(), axis = 1)
-    df_conditions['tmp'] = df_conditions.groupby('Logic_name2')['Logic_name2'].transform('count')
-    df_conditions['tmp2'] = df_conditions.groupby('Logic_name2').cumcount()
-    
-    df_conditions['Logic_name_new'] = df_conditions['Logic_name2'].str.cat(df_conditions['tmp2'].astype(str), sep="_")
 
-    df_conditions['Logic_c'] = df_conditions['title'].apply(lambda x: re.findall('(?<=\().*(?=\))', x))
+
+    df_conditions['Logic_name2'] = df_conditions.apply(lambda row: row['title'].split('=')[0].strip().split(' ')[-1].replace('(', '').replace(')', '') if (row['Logic_name1'] == '' and '=' in row['title']) else row['Logic_name1'] , axis = 1)
+
+    df_conditions['Logic_name3'] = df_conditions.apply(lambda row: row['next_question'].strip() if (row['Logic_name1'].isdigit() or row['Logic_name2'] == '') else row['Logic_name2'].strip(), axis = 1)
+
+    df_conditions['tmp'] = df_conditions.groupby('Logic_name3')['Logic_name3'].transform('count')
+    df_conditions['tmp2'] = df_conditions.groupby('Logic_name3').cumcount() + 1
+    
+    df_conditions['Logic_name_new'] = df_conditions['Logic_name3'].str.cat(df_conditions['tmp2'].astype(str), sep="_")
+
+    df_conditions['Logic_c'] = df_conditions['title'].apply(lambda x: re.findall('\((?<=\().*(?=\))\)', x))
     df_conditions['Logic_c1'] = df_conditions['Logic_c'].apply(lambda x: '' if len(x) ==0 else x[0])
-    
-    df_conditions['Logic_r'] = df_conditions['Logic_c1'].str.replace('=', ' == ').str.replace('<>', ' != ').str.replace(' OR ', ' || ').str.replace(' AND ', ' && ').str.replace(' or ', ' || ').str.replace(' and ', ' && ')
+    # remove some string, only keep () or () and ()
+    df_conditions['Logic_c3'] = df_conditions['Logic_c1'].apply(lambda x: ''.join(re.findall('\(.*?\)| or | and | OR | AND ', x)))
 
-  #  df_conditions.drop(['Logic_name', 'Logic_name1', 'tmp', 'tmp2', 'Logic_c', 'Logic_c1'], axis=1, inplace=True)
+    df_conditions['Logic_r'] = df_conditions['Logic_c3'].str.replace('=', ' == ').str.replace('<>', ' != ').str.replace(' OR ', ' || ').str.replace(' AND ', ' && ').str.replace(' or ', ' || ').str.replace(' and ', ' && ')
 
-    df_conditions['Logic_name_roman'] = df_conditions['Logic_name_new'].apply(lambda x: '_'.join([x.split('_')[0], int_to_roman(int(x.split('_')[1]))]))
-    df_conditions['Logic_name_roman'] = df_conditions['Logic_name_roman'].str.strip('_0')
-  
+    df_conditions['Logic_name_roman_1'] = df_conditions['Logic_name_new'].apply(lambda x: '_'.join([x.split('_')[0], int_to_roman(int(x.split('_')[1]))]))
+
+    df_conditions['Logic_name_roman'] = df_conditions.apply(lambda row: row['Logic_name_roman_1'].strip('_i') if row['tmp'] == 1 else row['Logic_name_roman_1'], axis=1)
+ 
     df_conditions['Label'] = 'c_q' + df_conditions['Logic_name_roman']
 
-    # rename inside 'logic', add qc_
-    df_conditions['Logic'] = df_conditions.apply(lambda row: row['Logic_r'].replace(row['Logic_name2'], 'qc_' + row['Logic_name2']) if (row['Logic_name2'] in row['Logic_r']) else row['Logic_r'], axis = 1)
+    def add_string_qc(text, replace_text_list):
+        for item in replace_text_list: 
+            if item in text: 
+                text = text.replace(item, 'qc_' + item)  
+        return text 
+
+    # rename inside 'logic', add qc_ to all question names inside the literal
+    df_conditions['Logic'] = df_conditions.apply(lambda row: add_string_qc(row['Logic_r'], [s[0] for s in row['Logic_name']]) if row['Logic_name'] != [] else row['Logic_r'], axis = 1)
 
     df_conditions.rename(columns={'title': 'Literal'}, inplace=True)
-    df_conditions = df_conditions.drop(['Logic_c', 'Logic_c1', 'Logic_r', 'Logic_name', 'Logic_name1', 'tmp', 'tmp2', 'Logic_name2', 'Logic_name_new', 'Logic_name_roman'], 1)
+    df_conditions = df_conditions.drop(['Logic_c', 'Logic_c1', 'Logic_c3', 'Logic_r', 'Logic_name', 'Logic_name1', 'tmp', 'tmp2', 'Logic_name2', 'Logic_name3', 'Logic_name_new', 'Logic_name_roman', 'Logic_name_roman_1'], 1)
 
+    df_conditions.to_csv('../LSYPE1/wave5-html/temp.csv', sep= ';', encoding = 'utf-8', index=False)
 
     return df_conditions
  
