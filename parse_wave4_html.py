@@ -159,19 +159,37 @@ def get_questionnaire(tree):
     new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{If|{\(If|\(If|{ If|If claiming sickness', row['title'], re.IGNORECASE)) 
 else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE)) 
 else row['source'], axis=1)
-    new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if ((row['title'].isupper() == True or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) or ('Pres' in row['title']) or ('{Ask for each' in row['title'])) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop'])  else row['condition_source'], axis=1) 
+    new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if ((row['title'].isupper() == True or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) or ('Pres' in row['title']) or ('{Ask for each' in row['title'])) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
 
 
     question_list = ['Chiliv', 'QualfMP', 'QualcMP']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
-    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|OPEN ENDED|ENTER DATE|DATETYPE|ENTER|Enter', row['title'])) & ~(row['question_source'] in ('Instruction', 'Loop'))
+    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|OPEN ENDED|ENTER DATE|DATETYPE|ENTER|Enter|DATETYPE', row['title'])) & ~(row['question_source'] in ('Instruction', 'Loop'))
 else 'Response' if row['title'].lower().startswith('enter ') else row['question_source'], axis=1)
 
     new_df.drop(['source', 'condition_source', 'new_source', 'question_source'], axis=1, inplace=True)
 
     new_df.rename(columns={'response_source': 'source'}, inplace=True)
-    return new_df
+
+    # request 1: Change all text response domains to 'Generic text'
+    new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] == 'ENTER DATE'
+                                                   else 1 if row['source'] == 'Response' and any(re.findall(r'Open answer|OPEN ENDED|ENTER|Enter', row['title']))
+                                                   else 0, axis=1)
+
+    for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist(): 
+        new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
+        new_df.loc[len(new_df)] = [i+0.5, 'DATETYPE', 0, 'Response', 0]
+
+    for i in new_df.loc[(new_df['Type_text'] == 1), :]['sourceline'].tolist(): 
+        new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
+        new_df.loc[len(new_df)] = [i+0.5, 'Generic text', 0, 'Response', 0]
+
+    new_df_sorted = new_df.sort_values(['sourceline'])
+
+    new_df_sorted.drop(['Type_text'], axis=1, inplace=True)
+
+    return new_df_sorted
 
  
 def f(string, match):
@@ -316,6 +334,8 @@ def get_question_items(df):
 
     df_question_all = df_question_all.drop_duplicates(subset=['Label'], keep='first')
     
+    # request 3: If there is no question literal, can we add the instruction text to the literal instead?
+    df_question_all.loc[df_question_all['Literal'].isnull(),'Literal'] = df_question_all['Instructions']
 
     return df_question_all
  
@@ -474,7 +494,7 @@ def main():
         print(title)
 
         df_q = get_questionnaire(tree)
-        
+        print(df_q.head(2))
         # add section line
         # sourceline	section_name	seq	source	
         df_q.loc[-1] = [line_start, section_name, 0, 'Section']  # adding a row
@@ -607,16 +627,30 @@ def main():
     df_response['Min'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[0] if len(re.findall(r'\d+', x)) == 2
                                                               else None)
     df_response['Max'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[-1] if len(re.findall(r'\d+', x)) >= 1 else None)
+
+    # request 2: Change all numeric response domains to the format 'Range: 1-18'
+    def find_between( s, first, last ):
+        try:
+            start = s.index( first ) + len( first )
+            end = s.index( last, start )
+            return s[start:end]
+        except ValueError:
+            return ""
+    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
+    df_response = df_response.drop('title', 1)
+
     df_response.loc[df_response['questions'] == 'Wrkch5', ['Numeric_Type/Datetime_type']] = 'float'
     df_response.loc[df_response['questions'] == 'Wrkch5', ['Min']] = '0.01'
     df_response.loc[df_response['questions'] == 'Wrkch5', ['Max']] = '999999.99'
+    df_response.loc[df_response['questions'] == 'Wrkch5', ['title1']] = 'Numeric 0.01-999999'
 
-    df_response.rename(columns={'title': 'Label'}, inplace=True)
+    df_response.rename(columns={'title1': 'Label'}, inplace=True)
 
     # de-dup
     response_keep = ['Label', 'Type', 'Numeric_Type/Datetime_type', 'Min', 'Max']
     df_response_sub = df_response.loc[:, response_keep]
-    df_response_sub.drop_duplicates().to_csv('../LSYPE1/wave4-html/response.csv', sep= ';', encoding = 'utf-8', index=False)
+    df_response_dedup = df_response_sub.drop_duplicates()
+    df_response_dedup.to_csv('../LSYPE1/wave4-html/response.csv', sep= ';', encoding = 'utf-8', index=False)
 
 
     # 3. Question grids 
