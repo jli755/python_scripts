@@ -475,8 +475,6 @@ def get_statements(df):
     df_statement['Label'] = 'statement_' + df_statement['ind'].astype(str) 
     df_statement = df_statement.drop('ind', 1)
 
-   # df_statement['Label'] = ['statement_1', 'statement_2', 'statement_3', 'statement_4', 'statement_5']
-
     return df_statement
 
 def main():
@@ -679,9 +677,7 @@ def main():
     df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
  
     # need to change these in the original df
-    print(df.head())
     vdic = pd.Series(df_response.title1.values, index=df_response.title).to_dict()
-    print(vdic)
     df.loc[df.title.isin(vdic.keys()), 'title'] = df.loc[df.title.isin(vdic.keys()), 'title'].map(vdic)
 
 
