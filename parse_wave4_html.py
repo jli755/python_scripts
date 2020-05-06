@@ -105,6 +105,7 @@ def get_questionnaire(tree):
     df_listlevel = df_listlevel1WW8Num.assign(title=df_listlevel1WW8Num['title'].str.split('\n')).explode('title')
     df_listlevel['seq'] = df_listlevel.groupby(['source', 'sourceline']).cumcount() + 1
     df_listlevel['source'] = 'listlevel1WW8Num'
+    df_NormalWeb = get_class(tree, 'NormalWeb')
     
     # df_Footnote = get_class(tree, 'Footnote')   
     # df_FootnoteSymbol = get_class(tree, 'FootnoteSymbol')
@@ -117,7 +118,8 @@ def get_questionnaire(tree):
                     df_Standard,
                     df_AnswerText,
                     df_Filter,
-                    df_listlevel
+                    df_listlevel,
+                    df_NormalWeb
                  ])
     
     df['seq'].fillna('0', inplace=True)
@@ -437,12 +439,19 @@ def get_loops(df):
 
     col_names =  ['Label', 'Variable', 'Start Value', 'End Value', 'Loop While', 'Logic']
     df_loops  = pd.DataFrame(columns = col_names)
-    df_loops.loc[len(df_loops)] = ['l_Hdob', 'Hdob', 379, 417, 'Ask for each NEW 4 hhold member', '']
-    df_loops.loc[len(df_loops)] = ['l_Household', 'Household', 422, 683, 'QUESTION IN THE BOX TO BE REPEATED FOR EVERY HOUSEHOLD MEMBER.', '']
-    df_loops.loc[len(df_loops)] = ['l_NewHousehold', 'NewHousehold', 691, 734, 'Ask for each NEW household member', '']
-    df_loops.loc[len(df_loops)] = ['l_hhold', 'hhold', 741, 760, 'Ask for each hhold member in a relationship (Marstat=2 or 3 or Livewit=1)', 'Marstat == 2 || 3 || Livewit == 1']
-    df_loops.loc[len(df_loops)] = ['l_JHST', 'JHST', 201654, 201769, 'LOOP ENDS WHEN SEPTEMBER 2006 OR EARLIER IS ENTERED AT JHSTY AND JHSTM OR "Yes" AT JHSTYDK OR JHSTMDK', 'JHSTYDK == "Yes" || JHSTMDK == "Yes"']
-    
+    df_loops.loc[len(df_loops)] = ['l_Hdob', 'Hdob', 379, 417, 'Ask for each NEW 4 hhold member', 'each NEW 4 hhold member']
+    df_loops.loc[len(df_loops)] = ['l_Household', 'Household', 422, 683, 'QUESTION IN THE BOX TO BE REPEATED FOR EVERY HOUSEHOLD MEMBER.', 'EVERY HOUSEHOLD MEMBER']
+    df_loops.loc[len(df_loops)] = ['l_NewHousehold', 'NewHousehold', 691, 734, 'Ask for each NEW household member', 'each NEW household member']
+    df_loops.loc[len(df_loops)] = ['l_hhold', 'hhold', 741, 760, 'Ask for each hhold member in a relationship (Marstat=2 or 3 or Livewit=1)', '_Marstat == 2 || 3 || _Livewit == 1']
+    df_loops.loc[len(df_loops)] = ['l_JHST', 'JHST', 201654, 201769, 'LOOP ENDS WHEN SEPTEMBER 2006 OR EARLIER IS ENTERED AT JHSTY AND JHSTM OR "Yes" AT JHSTYDK OR JHSTMDK', '_JHSTYDK == "Yes" || _JHSTMDK == "Yes"']
+    df_loops.loc[len(df_loops)] = ['l_AVCE', 'AVCE', 201881, 201898, 'IF STUDYING FOR AT LEAST ONE AVCE, REPEAT FOLLOWING QUESTION FOR EACH _AVCE', 'FOR EACH _AVCE']
+    df_loops.loc[len(df_loops)] = ['l_KSLev', 'KSLev', 202026, 202041, 'Loop repeats for all the Key Skills mentioned at _KeySkill', 'for all the Key Skills mentioned at _KeySkill']
+    df_loops.loc[len(df_loops)] = ['l_GNVQLev', 'GNVQLev', 202100, 202132, 'Loop repeats for each _GNVQ mentioned at _GNVQNo', 'for each _GNVQ mentioned at _GNVQNo']    
+    df_loops.loc[len(df_loops)] = ['l_NVQFull', 'NVQFull', 202149, 202191, 'Loop repeats for each NVQ mentioned at _NVQNo', 'for each _NVQ mentioned at _NVQNo']
+    df_loops.loc[len(df_loops)] = ['l_EdExSub', 'EdExSub', 202206, 202246, 'Loop repeats for each _Edexcel, _BTEC or _LQL qualification mentioned at _EdExNo', 'for each _Edexcel, _BTEC or _LQL qualification mentioned at _EdExNo']
+    df_loops.loc[len(df_loops)] = ['l_OCRSub', 'OCRSub', 202267, 202319, 'Loop repeats for each _OCR qualification mentioned at _OCRNo', 'for each _OCR qualification mentioned at _OCRNo']
+    df_loops.loc[len(df_loops)] = ['l_CitySub', 'CitySub', 202336, 202385, 'Loop repeats for each _City and _Guild mentioned at _CityNo', 'for each _City and _Guild mentioned at _CityNo']
+    df_loops.loc[len(df_loops)] = ['l_OtherTyp', 'OtherTyp', 202446, 202500, 'Loop repeats for each other qualification mentioned at _OtherNo', 'for each other qualification mentioned at _OtherNo']
 
     return df_loops
  
@@ -456,7 +465,7 @@ def find_parent(start, stop, df_mapping, source, section_label):
     else:
         df = df_mapping.loc[(df_mapping.sourceline < start) & (df_mapping.End > stop), :]
 
-    if source != 'CcQuestions' :
+    if source not in ['CcQuestions', 'CcCondition']:
         return section_label
     elif not df.empty:
         df['dist'] = start - df['sourceline']
@@ -471,10 +480,24 @@ def isNaN(num):
     return num != num
 
 
+def get_statements(df):    
+    """
+        Create Statement table: Label,above_label,parent_type,branch,Position,Literal
+
+    """
+    df_statement = df.loc[:, ['title', 'sourceline']].reset_index()
+    df_statement.rename(columns={'title': 'Literal'}, inplace=True)
+    df_statement['ind'] = df_statement.index + 1
+    df_statement['Label'] = 'statement_' + df_statement['ind'].astype(str) 
+    df_statement = df_statement.drop('ind', 1)
+
+    return df_statement
+
 
 def main():
     input_dir = '../LSYPE1/wave4-html'
     html_names = ['W4_household - Questionnaire.htm', 'W4_main_parent - Questionnaire.htm', 'W4_young_person - Questionnaire.htm']
+
     appended_data = []
     for idx, val in enumerate(html_names):
         if idx == 0:
@@ -505,7 +528,7 @@ def main():
 
         df_q['new_sourceline'] = df_q['sourceline'] + 100000*idx
 
-        # df_q.to_csv('../LSYPE1/wave4-html/{}.csv'.format(idx), sep= ';', encoding = 'utf-8', index=False)
+        df_q.to_csv('../LSYPE1/wave4-html/{}.csv'.format(idx), sep= ';', encoding = 'utf-8', index=False)
         appended_data.append(df_q)
     df = pd.concat(appended_data)
     df = df.loc[(df.new_sourceline < 206165) , :]
@@ -584,7 +607,34 @@ def main():
     df.loc[df['new_sourceline'] == 102186, ['title']] = 'SHOWCARD B12'
     df.loc[df['new_sourceline'] == 102187, ['title']] = 'QualcMP'
 
-    
+    df.loc[df['new_sourceline'] == 100661, ['title']] = ''
+    df.loc[df['new_sourceline'] == 123, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 257, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 365, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 466, ['source']] = 'Statement'
+
+    df.loc[df['new_sourceline'] == 296, ['source']] = 'Condition'
+
+    df.loc[df['new_sourceline'] == 101528, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 102880, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 103189, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200325, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 201933, ['source']] = 'Statement'
+
+    df.loc[df['new_sourceline'] == 901, ['source']] = 'Standard'
+    df.loc[df['new_sourceline'] == 989, ['source']] = 'Instruction'
+
+    df.loc[df['new_sourceline'] == 205977, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 205999, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 206010, ['source']] = 'Condition'
+    df.loc[df['new_sourceline'] == 206013, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 206031, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 206046, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 206066, ['source']] = 'SectionNumber'
+
+    df.loc[df['new_sourceline'] == 202506, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 202510, ['source']] = 'Condition'
+    df.loc[df['new_sourceline'] == 202171, ['source']] = 'codelist'
 
     # rename duplicated question names
     df['tmp'] = df.groupby('title').cumcount() 
@@ -637,6 +687,11 @@ def main():
         except ValueError:
             return ""
     df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
+
+    # need to change these in the original df
+    vdic = pd.Series(df_response.title1.values, index=df_response.title).to_dict()
+    df.loc[df.title.isin(vdic.keys()), 'title'] = df.loc[df.title.isin(vdic.keys()), 'title'].map(vdic)
+
     df_response = df_response.drop('title', 1)
 
     df_response.loc[df_response['questions'] == 'Wrkch5', ['Numeric_Type/Datetime_type']] = 'float'
@@ -652,6 +707,8 @@ def main():
     df_response_dedup = df_response_sub.drop_duplicates()
     df_response_dedup.to_csv('../LSYPE1/wave4-html/response.csv', sep= ';', encoding = 'utf-8', index=False)
 
+    # 3. Statements
+    df_statement = get_statements(df[df['source'] == 'Statement'])
 
     # 3. Question grids 
     df_question_grids, df_qg_codes = get_question_grids(df[df['questions'].isin(question_grid_names)])
@@ -675,7 +732,7 @@ def main():
 
 
     # 5. Sequences
-    df_sequences = df.loc[(df.source == 'SequenceNumber'), :]
+    df_sequences = df.loc[(df.source == 'SequenceNumber'), :].reset_index()
     df_sequences.rename(columns={'title': 'Label'}, inplace=True)
     df_sequences['section_id'] = df_sequences.index + 1
     df_sequences.loc[:, ['sourceline', 'Label', 'section_id']].to_csv('../LSYPE1/wave4-html/sequences.csv', sep = ';', encoding = 'utf-8', index=False)
@@ -703,10 +760,12 @@ def main():
     df_loops_p = df_loops.loc[:, ['Start Value', 'End Value', 'Label']]
     df_loops_p.rename(columns={'Start Value': 'sourceline'}, inplace=True)
     df_loops_p['source'] = 'CcLoop'
+    df_statement_p = df_statement.loc[:, ['sourceline', 'Label']]
+    df_statement_p['source'] = 'CcStatement'
 
     df_sequences_p_1 = pd.DataFrame([[0, 'LSYPE_Wave_4', 'CcSequence']], columns=['sourceline', 'Label', 'source']) 	
 
-    df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_questions_grids_p, df_conditions_p, df_sequences_p_1, df_loops_p]).reset_index()
+    df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_questions_grids_p, df_conditions_p, df_sequences_p_1, df_loops_p, df_statement_p]).reset_index()
     df_parent = df_parent.sort_values(by=['sourceline']).reset_index()
     
     df_sequence_position = df_parent
@@ -770,6 +829,14 @@ def main():
     loops_keep = ['Label', 'Variable', 'Start Value', 'End Value', 'Loop While', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
     df_loops_new[loops_keep].to_csv(os.path.join(input_dir, 'loops.csv'), encoding='utf-8', sep=';', index=False)
 
+    df_loops_new['Start Value'] = 1
+    df_loops_new['End Value'] = ''
+#    df_loops_new['Loop While'] = ''
+    df_loops_new[loops_keep].to_csv(os.path.join(input_dir, 'loops.csv'), encoding='utf-8', sep=';', index=False)
+
+    df_statement_new = pd.merge(df_statement, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
+    statement_keep = ['Label', 'Literal', 'above_label', 'parent_type', 'branch', 'Position']
+    df_statement_new[statement_keep].to_csv(os.path.join(input_dir, 'statements.csv'), encoding='utf-8', sep=';', index=False)
 
 if __name__ == "__main__":
     main()

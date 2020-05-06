@@ -587,6 +587,7 @@ def main():
     df.loc[df['new_sourceline'] == 204254, ['source']] = 'SectionNumber'
     df.loc[df['new_sourceline'] == 204292, ['source']] = 'SectionNumber'
 
+
 ##    df.loc[-1] = ['0', 'Response', 200864, 'Generic text', 'SchAdd1Y']  #  TypeError: '<' not supported between instances of 'str' and 'float'
     df = df[df.new_sourceline != 101465]
     df = df[df.new_sourceline != 101466]
@@ -787,7 +788,7 @@ def main():
 
     df_loops_new['Start Value'] = 1
     df_loops_new['End Value'] = ''
-    # df_loops_new['Loop While'] = ''
+    #df_loops_new['Loop While'] = ''
     df_loops_new[loops_keep].to_csv(os.path.join(input_dir, 'loops.csv'), encoding='utf-8', sep=';', index=False)
 
     df_statement_new = pd.merge(df_statement, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
