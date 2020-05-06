@@ -118,12 +118,20 @@ def main():
     df_loop = df_loop.drop(['Label'], 1)
     df_loop.rename(columns={'Label_new': 'Label'}, inplace=True)
 
-    loopcols = ['Label', 'Loop_While', 'above_label', 'parent_type', 'Position']
+    df_loop['Variable'] = df_loop['Label'].apply(lambda x: x[2:])
+
+    df_loop['Start_Value'] = 1
+    df_loop['End_Value'] = ''
+    df_loop['Logic'] = df_loop['Loop_While'].apply(lambda s: s[s.find("(")+1:s.find(")")])
+    df_loop['branch'] = 0
+
+    loopcols = ['Label', 'Variable', 'Start_Value', 'End_Value', 'Loop_While', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
     df_loop[loopcols].to_csv(os.path.join(new_dir, 'wave8_order_loop.csv'), index=False, sep=';')
     
     # question item
     df_QI = pd.read_csv(os.path.join(old_dir, 'wave8_question_item.csv'), sep=';')
     df_QI['Literal'].fillna('?', inplace=True)
+    df_QI['Literal'] = df_QI['Literal'].apply(lambda x: re.sub(r'<.*?>', ' ', x))
     # QI dict
     df_QI['Label_new'] = 'qi_' + df_QI['Label'].str.replace('&', '_').str.replace('.', '').str.replace('(', '_').str.replace(')', '_').str.replace('<>', '_')
     QI_dict = dict(zip(df_QI.Label, df_QI.Label_new))
@@ -141,6 +149,8 @@ def main():
 
     # question grid
     df_QG = pd.read_csv(os.path.join(old_dir, 'wave8_question_grid.csv'), sep='@')
+
+
     # QI dict
     df_QG['Label_new'] = 'qg_' + df_QG['Label'].str.replace('&', '_').str.replace('.', '').str.replace('(', '_').str.replace(')', '_').str.replace('<>', '_')
     QG_dict = dict(zip(df_QG.Label, df_QG.Label_new))
@@ -156,6 +166,10 @@ def main():
     df_QG['above_label_new1'] = df_QG['above_label_new'].map(loop_dict).fillna(df_QG['above_label_new'])
     df_QG = df_QG.drop(['above_label', 'Label', 'above_label_new'], 1)
     df_QG.rename(columns={'Label_new': 'Label', 'above_label_new1': 'above_label'}, inplace=True)
+
+    df_QG['Literal'].fillna('?', inplace=True)    
+    df_QG['Literal'] = df_QG['Literal'].apply(lambda x: re.sub(r'<.*?>', ' ', x))
+
     QGcols = ['Label', 'Literal', 'horizontal_code_list_name', 'vertical_code_list_name', 'above_label', 'Position', 'parent_type']
 
     df_QG[QGcols].to_csv(os.path.join(new_dir, 'wave8_question_grid.csv'), index=False, sep='@')
