@@ -43,3 +43,23 @@
         - From temporary tables, insert to database tables
     3. [db_delete.sql](https://github.com/jli755/python_scripts/blob/master/db_delete.sql)
         - Delete a study
+
+## Dec 2019 - Apr 2020
+
+1. [x] The Longitudinal Study of Young People in England (LSYPE), also known as "Next Steps"
+    1. [Wave 8](https://wiki.ucl.ac.uk/display/CTTEAM/LSYPE_Wave_8)
+    2. [Wave 7](https://wiki.ucl.ac.uk/pages/viewpage.action?pageId=131380657) 
+    3. [Wave 5](https://wiki.ucl.ac.uk/display/CTTEAM/YP-W5-S2_FINAL_F2F+-+Questionnaire)
+    4. [Wave 4](https://wiki.ucl.ac.uk/display/CTTEAM/LSYPE_Wave_4)
+    5. [Wave 3](https://wiki.ucl.ac.uk/display/CTTEAM/LSYPE_Wave_3)
+    6. [Wave 2](https://wiki.ucl.ac.uk/display/CTTEAM/LSYPE_Wave_2)
+    7. [Wave 1](https://wiki.ucl.ac.uk/display/CTTEAM/LSYPE_Wave_1)
+
+## May 2020
+
+1. [x] UCL Centre for Longitudinal Studies COVID-19 Online Survey Questionnaire
+    1. [Wave 1](https://wiki.ucl.ac.uk/display/CTTEAM/UCL+COVID-19)
+
+2. [x] Export and clean xml files
+    1. [export_clean_xml.py](https://github.com/jli755/python_scripts/blob/master/export_clean_xml.py)
+
