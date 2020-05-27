@@ -3,7 +3,16 @@
 """
 Python 3
     Web scraping using selenium to get .xml
+        - from https://archivist.closer.ac.uk/admin/export  Download latest
+
     Clean xml 
+
+    grep -rnw 'archivist' -e '&amp;amp;'
+    archivist/alspac_91_pq.xml:16376:          <r:Content xml:lang="en-GB">City &amp;amp; Guilds intermediate technical</r:Content>
+    archivist/alspac_91_pq.xml:16385:          <r:Content xml:lang="en-GB">City &amp;amp; Guilds final technical</r:Content>
+    archivist/alspac_91_pq.xml:16394:          <r:Content xml:lang="en-GB">City &amp;amp; Guilds full technical</r:Content>
+    archivist/alspac_91_pq.xml:16412:          <r:Content xml:lang="en-GB">Yes &amp;amp; affected me a lot</r:Content>
+
 """
 
 from selenium import webdriver
@@ -36,48 +45,81 @@ def get_names(df):
     Return a dictionary of files 
     """
 
-    df["url"] = df.apply(lambda row: os.path.join("https://archivist.closer.ac.uk/instruments/", row["Prefix"]) if row["Archivist"] == "Main"
-                                else os.path.join("https://closer-archivist-alspac.herokuapp.com/instruments", row["Prefix"]) if row["Archivist"] == "ALSPAC"
-                                else os.path.join("https://closer-archivist-us.herokuapp.com/instruments", row["Prefix"]) if row["Archivist"] == "US"
+    df["url"] = df.apply(lambda row: "https://archivist.closer.ac.uk/admin/export/" if row["Archivist"] == "Main"
+                                else "https://closer-archivist-alspac.herokuapp.com/admin/export" if row["Archivist"] == "ALSPAC"
+                                else "https://closer-archivist-us.herokuapp.com/admin/export" if row["Archivist"] == "US"
                                 else None, axis=1)
     names_dict = pd.Series(df.url.values, index=df.Prefix).to_dict()
     return names_dict
 
 
-def archivist_download_xml(xml_name, output_dir):
+def archivist_download_xml(export_names, output_dir):
     """
-    Loop over xml_name dictionary, downloading xml
+    Loop over export_names dictionary, downloading xml
     """
 
     # Log in to all
-    unique_instance = set([os.path.dirname(l) for l in list(xml_name.values())])
+    unique_instance = set([os.path.dirname(l) for l in list(export_names.values())])
+    print(unique_instance)
     for i in unique_instance: 
         archivist_login(i)
  
-    for key, value in xml_name.items():
-        if value is not None:
-            driver.get(value)
-            time.sleep(10)
+    k = 0
+    for prefix, url in export_names.items():
 
-            print("Getting xml for " + key)
-            xml_url = value + ".xml"
+        if url is not None:
+            driver.get(url)
+            time.sleep(10)
+ 
+            print(k)
+            # find the input box
+            inputElement = driver.find_element_by_xpath("//input[@placeholder='Search for...']")
             
-            driver.get(xml_url)
+            inputElement.send_keys(prefix)   
 
-            time.sleep(10)
-            print("  Downloading xml for " + key)
-            out_f = os.path.join(output_dir, key + ".xml")
-            print(out_f)
-            with open(out_f, "wb") as f:
-                try:
-                    f.write(driver.page_source.encode("utf-8"))
-                except UnicodeEncodeError:
-                    print("Could not download Unicode: ", key)
-                    continue
-                except IOError:
-                    print("Could not download IO : ", key)
-                    continue
-            time.sleep(5)
+            # locate id and link
+            trs = driver.find_elements_by_xpath("html/body/div/div/div/div/div/div/table/tbody/tr")
+            # print("This page has {} rows".format(len(trs)))
+
+            for i in range(1, len(trs)):
+                # row 0 is header: tr has "th" instead of "td"
+                tr = trs[i]
+
+                # column 2 is "Prefix"
+                xml_prefix = tr.find_elements_by_xpath("td")[1].text
+
+                # column 5 is "Export date"           
+                xml_date = tr.find_elements_by_xpath("td")[4].text
+
+                # column 6 is "Actions", need to have both "download latest and export"
+                xml_location = tr.find_elements_by_xpath("td")[5].find_elements_by_xpath("a")[0].get_attribute("href")
+
+                if (xml_prefix == prefix and xml_location is not None):
+                    print("Getting xml for " + prefix) 
+            
+                    driver.get(xml_location)
+
+                    time.sleep(10)
+                    print("  Downloading xml for " + prefix)
+                    out_f = os.path.join(output_dir, prefix + ".xml")
+
+                    with open(out_f, "wb") as f:
+                        try:
+                            f.write(driver.page_source.encode("utf-8"))
+                        except UnicodeEncodeError:
+                            print("Could not download Unicode: ", prefix)
+                            continue
+                        except IOError:
+                            print("Could not download IO : ", prefix)
+                            continue
+                    time.sleep(5)
+                else:
+                    print("No download link for " + prefix)
+                    xml_location = "No download link"
+
+                k = k + 1
+                with open(os.path.join(os.path.dirname(output_dir), "download_list.csv"), "a") as f:
+                    f.write( ",".join([str(k), prefix, xml_date, xml_location]) + "\n")
     driver.quit()
 
  
@@ -86,10 +128,10 @@ def get_xml(df, output_dir):
     Export xml to output dir
     """
 
-    xml_names = get_names(df)
-    print("Got {} xml names".format(len(xml_names)))
+    export_names = get_names(df)
+    print("Got {} xml names".format(len(export_names)))
 
-    archivist_download_xml(xml_names, output_dir)
+    archivist_download_xml(export_names, output_dir)
            
 
 def clean_text(rootdir):
@@ -188,7 +230,7 @@ def main():
         os.makedirs(output_dir)
 
     # Hayley's txt as dataframe
-    df = pd.read_csv(os.path.join(main_dir, 'Prefixes_to_export.txt'), sep='\t')
+    df = pd.read_csv(os.path.join(main_dir, "Prefixes_to_export.txt"), sep="\t")
 
     get_xml(df, output_dir)
     clean_text(output_dir)
