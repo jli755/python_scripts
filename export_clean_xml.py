@@ -4,15 +4,6 @@
 Python 3
     Web scraping using selenium to get .xml
         - from https://archivist.closer.ac.uk/admin/export  Download latest
-
-    Clean xml 
-
-    grep -rnw 'archivist' -e '&amp;amp;'
-    archivist/alspac_91_pq.xml:16376:          <r:Content xml:lang="en-GB">City &amp;amp; Guilds intermediate technical</r:Content>
-    archivist/alspac_91_pq.xml:16385:          <r:Content xml:lang="en-GB">City &amp;amp; Guilds final technical</r:Content>
-    archivist/alspac_91_pq.xml:16394:          <r:Content xml:lang="en-GB">City &amp;amp; Guilds full technical</r:Content>
-    archivist/alspac_91_pq.xml:16412:          <r:Content xml:lang="en-GB">Yes &amp;amp; affected me a lot</r:Content>
-
 """
 
 from selenium import webdriver
