@@ -61,6 +61,7 @@
     1. [Wave 1](https://wiki.ucl.ac.uk/display/CTTEAM/UCL+COVID-19)
 
 2. [x] Export and clean xml files
+    1. [archivist_click_export_button.py](https://github.com/jli755/python_scripts/blob/master/archivist_click_export_button.py)
     1. [export_clean_xml.py](https://github.com/jli755/python_scripts/blob/master/export_clean_xml.py)
 
 3. [x] Understanding Society Coronavirus Study
