@@ -67,3 +67,6 @@
 3. [x] Understanding Society Coronavirus Study
     1. [April 2020 questionnaire](https://wiki.ucl.ac.uk/display/CTTEAM/Understanding+Society+Coronavirus+Study)
 
+4. [x] Code lists could be used for different questions, fix LSYPE studys
+    1. [LSYPE_clean_codes.py](https://github.com/jli755/python_scripts/blob/master/LSYPE_clean_codes.py)
+        - same script used for all studys, need to modify input dir 
