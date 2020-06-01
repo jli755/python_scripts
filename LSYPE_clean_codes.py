@@ -48,7 +48,7 @@ def get_new_label(df):
 
 
 def main():
-    input_dir = '../LSYPE1/wave1-html'
+    input_dir = '../LSYPE1/wave4-html'
     output_dir = os.path.join(input_dir, 'clean_code_input')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -60,10 +60,9 @@ def main():
 
     label_dict, codes_dict = get_new_label(df_codes)
 
-    df_codes['Label'] = df_codes['Label'].map(label_dict)
-    # dropping ALL duplicte values 
-    df_codes.drop_duplicates(keep = 'first', inplace = True)
-    df_codes.to_csv(os.path.join(output_dir, 'codes.csv'), encoding='utf-8', sep=';', index=False)
+    df_codes_dict = pd.concat(codes_dict, axis=0).reset_index().drop('level_1', 1)
+    df_codes_dict.rename(columns={'level_0': 'Label'}, inplace=True)
+    df_codes_dict.to_csv(os.path.join(output_dir, 'codes.csv'), encoding='utf-8', sep=';', index=False)
 
     df_qg = pd.read_csv(os.path.join(input_dir, 'question_grids.csv'), sep=';')
     df_qg['horizontal_code_list_name'] = df_qg['horizontal_code_list_name'].map(label_dict)
