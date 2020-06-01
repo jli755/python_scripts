@@ -20,11 +20,11 @@ def get_new_label(df):
     codes_dict = {}
 
     for old_label in df['Label'].unique():
-
+        # print(old_label)
         df_codes = df.loc[(df.Label == old_label), ['codes_order', 'value', 'Category']].reset_index(drop=True)
 
         # two values and each value is one word only
-        if (df_codes.shape[0] == 2) and (all([len(s.split()) == 1 for s in df_codes['Category'].tolist()])):
+        if (df_codes.shape[0] == 2) and ( all([ not pd.isnull(s) and len(s.split()) == 1 for s in df_codes['Category'].tolist()])):
             #print("TWO")
             new_label = 'cs_' + ('_').join(df_codes['Category'].tolist()) 
 
