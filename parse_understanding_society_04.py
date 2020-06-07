@@ -63,30 +63,6 @@ def extractText(node):
     return "".join(chunks)
 
 
-def get_modules(root):
-    """ 
-        Do a Depth-first search (DFS) from root, finding only modules 
-    """
-    module_elements = [] 
-    for e in root.iter(): 
-        if e.tag.lower() == 'module': 
-            module_elements.append(e) 
-
-    return module_elements
-
-
-def get_questions(root):
-    """ 
-        Do a Depth-first search (DFS) from root, finding only questions 
-    """
-    questions = []
-    for e in root.iter(): 
-        if e.tag.lower() == 'question': 
-            questions.append(e) 
-
-    return questions
-
-
 def get_question_response(question_element):
     """ 
         from question element, find it's response 
@@ -151,10 +127,10 @@ def get_question_response(question_element):
                 max_v = e.attrib['max']
             else:
                 max_v = None
-            response_label = 'Numeric: ' + min_v + '-' + max_v 
+            response_label = 'Range: ' + min_v + '-' + max_v 
 
         else:
-            response_label = 'Generic number'
+            response_label = 'How many'
             min_v = None
             max_v = None
         df_response.loc[len(df_response)] = [response_label, 'Numeric', Numeric_Type, min_v, max_v]
@@ -165,43 +141,6 @@ def get_question_response(question_element):
     df_question_answer.loc[len(df_question_answer)] = [question_label, qi_label, qi_literal, qi_instruction, response_label]
 
     return df_question_answer, df_response, df_codelist
-
-
-def get_condition(condition_element):
-    """
-        Find condition label, logic etc.
-    """
-    logic = extractText(condition_element.find('./condition'))
-
-    if condition_element.find('./sd_properties/label') is None:
-        literal = ''
-    else:
-        literal = condition_element.find('./sd_properties/label').text
-
-    if any(ext in logic for ext in ['=', '>', '<', '-']):
-        k = re.findall(r'(\w+) *(=|>|<|-)', logic)[0][0]
-        #print('  new label is "{}"'.format(k))
-    else:
-        k = logic.split(' ')[0]
-    k = 'c_' + k
-
-    count = 0
-    kk = k
-    while True:
-        if dict_if.get(kk, False):
-            count += 1
-            kk = k + '_' + str(count)
-        else:
-            break
-        k = kk
-
-    logic = logic.replace('&lt;', '<').replace('&gt;', '>')
-
-    condition_names =  ['Label', 'Literal', 'Logic']
-    df_condition = pd.DataFrame(columns = condition_names)
-    df_condition.loc[len(df_condition)] = [k, literal, logic]
-
-    return df_condition
 
 
 def get_sequence(sequence_element):
@@ -217,58 +156,8 @@ def get_sequence(sequence_element):
     return df_sequence
 
 
-def get_all_response(root):
-    """
-        Find all response and code list associated with all questions.
-    """
-    question_list = get_questions(root)
-
-    appended_question_answer = []
-    appended_response = []
-    appended_codelist = []
-   
-    for q in question_list:
-        df_question_answer, df_response, df_codelist = get_question_response(q)
-
-        appended_question_answer.append(df_question_answer)
-        appended_response.append(df_response)
-        appended_codelist.append(df_codelist)   
-
-    df_appended_question_answer = pd.concat(appended_question_answer)    
-    df_appended_response = pd.concat(appended_response)
-    df_appended_codelist = pd.concat(appended_codelist)
-
-    df_appended_response = df_appended_response.drop_duplicates(keep = 'first', inplace=False)
-
-    df_appended_question_answer.to_csv('../understanding_society/wave4/df_question_answer.csv', encoding='utf-8', sep=';', index=False)
-    df_appended_response.to_csv('../understanding_society/wave4/df_response.csv', encoding='utf-8', sep=';', index=False)
-    df_appended_codelist.to_csv('../understanding_society/wave4/df_codelist.csv', encoding='utf-8', sep=';', index=False)
-
-    return df_appended_question_answer, df_appended_response, df_appended_codelist
-
-
 def node_level(parent_map, node): 
     return node_level(parent_map, parent_map[node])+1 if node in parent_map else 0      
-
-
-def get_labels(root):
-    """
-        Find all labels for module and question 
-    """
-    col_names =  ['Source', 'Label']
-    df = pd.DataFrame(columns = col_names)
-    
-    module_elements = get_modules(root)
-    for m in module_elements:
-        module_label = m.findall('./rm_properties/label')[0].text
-        df.loc[len(df)] = ['module', module_label]
-
-        question_elements = get_questions(m)
-        for q in question_elements:
-            question_label = q.findall('./context')[0].text
-            df.loc[len(df)] = ['question', question_label]
-
-    return df
 
 
 def gimme_index(p, c): 
@@ -311,7 +200,8 @@ def get_useful_parent_info(e, parmap):
     parent_type = 'CcSequence' if parent.tag == 'module' else 'CcCondition' if parent.tag == 'if' else 'CcLoop' if parent.tag == 'loop' else ''
     if parent.tag == 'if' and parent_key is None:
         raise RuntimeError('oh no')
-    return parent, parent_type, parent_key
+    branch = 0 if parent_type == 'CcCondition' else 1
+    return parent, parent_type, parent_key, branch
 
 
 def TreeToTables(root, parmap):
@@ -366,10 +256,10 @@ def TreeToTables(root, parmap):
             #print('  new label is "{}"'.format(k))
         else:
             k = logic.split(' ')[0]
-        k = 'c_' + k
+        k = 'c_q' + k
 
-        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
-        return k, (literal, logic, parent_type, parent_key, None, global_pos)
+        parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
+        return k, (literal, logic, parent_type, parent_key, branch, global_pos)
 
 
     def do_loop(e):
@@ -396,8 +286,8 @@ def TreeToTables(root, parmap):
         else:
             k = 'Loop'
         k = 'l_' + k
-        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
-        return k, (loop_label, logic, parent_type, parent_key, None, global_pos)
+        parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
+        return k, (loop_label, logic, parent_type, parent_key, branch, global_pos)
 
     def do_mod(e):
         """
@@ -405,17 +295,17 @@ def TreeToTables(root, parmap):
         """
         label = e.find('./rm_properties/label').text
         df_mod = get_sequence(e)
-        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
+        parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
 
         # manual fix
-        if e.attrib['name'] not in ('hhgrid_w4', 'gridvariables_w4', 'household_w4', 'indintro_w3', 'proxy_w4' ):
-            parent_key = 'Individual Questionnaire'
-        else:
-            parent_key = 'main04'
+#        if e.attrib['name'] not in ('hhgrid_w4', 'gridvariables_w4', 'household_w4', 'indintro_w3', 'proxy_w4' ):
+#            parent_key = 'Individual Questionnaire'
+#        else:
+#            parent_key = 'main04'
         
         df_mod['parent_type'] = 'CcSequence'
         df_mod['parent_name'] = parent_key
-        df_mod['branch'] = None
+        df_mod['branch'] = branch
         df_mod['global_pos'] = global_pos
 
         return label, df_mod
@@ -423,11 +313,11 @@ def TreeToTables(root, parmap):
     def do_q(e):
         """insert e into the Question Table and return the key."""
         df_qi, df_response, df_codelist = get_question_response(e)
-        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
+        parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
         
         df_qi['parent_type'] = parent_type
         df_qi['parent_name'] = parent_key
-        df_qi['branch'] = 1
+        df_qi['branch'] = branch
         df_qi['global_pos'] = global_pos
 
         return df_qi, df_response, df_codelist
@@ -515,7 +405,7 @@ def TreeToTables(root, parmap):
 
     # sequence 
     df_appended_sequence = pd.concat(appended_sequence)  
-    df_appended_sequence.loc[len(df_appended_sequence)] = ['Individual Questionnaire', 'Individual Questionnaire',  'CcSequence', 'main04', None, 8280]
+#    df_appended_sequence.loc[len(df_appended_sequence)] = ['Individual Questionnaire', 'Individual Questionnaire',  'CcSequence', 'main04', None, 8280]
     df_appended_sequence= df_appended_sequence.sort_values('global_pos')
 
     return (df_appended_question_answer, df_appended_response, df_appended_codelist, df_condition, df_appended_sequence, df_loop)
@@ -612,6 +502,26 @@ def update_codelist(df_codelist, df_qi):
     return df_codes_dict, df_qi
 
 
+def manual_fix(df_sequence):
+    """Manually modify sequence order"""
+
+    df_sequence.reset_index(drop=True, inplace=True)
+
+    df_line = pd.DataFrame({'Label': 'Individual Questionnaire', 
+                         'parent_type': 'CcSequence',
+                         'parent_name': 'main04',
+                         'branch': 1,
+                         'Position': None}, 
+                        index=[2.5])
+
+    df = df_sequence.append(df_line, ignore_index=False)
+    df = df.sort_index().reset_index(drop=True)
+
+    df['parent_name'] = df['Label'].apply(lambda x: 'Individual Questionnaire' if x not in ('Household Grid module', 'Grid Variables module', 'Household Questionnaire', 'Individual Intro module', 'Proxy Questionnaire', 'Individual Questionnaire') else 'main04')
+    df['Position'] = df.groupby(['parent_name']).cumcount() + 1
+    return df
+
+
 def main():
 #if True:
     input_dir = '../understanding_society/wave4/'
@@ -634,6 +544,7 @@ def main():
     df_qi, df_condition, df_loop, df_sequence = update_position(df_qi, df_condition, df_loop, df_sequence)
 
     df_codes_dict, df_qi = update_codelist(df_codelist, df_qi)
+    df_sequence = manual_fix(df_sequence)
 
     df_qi.to_csv(os.path.join(output_dir, 'question_items.csv'), encoding='utf-8', sep=';', index=False)
     df_response.to_csv(os.path.join(output_dir, 'response.csv'), encoding='utf-8', sep=';', index=False)
