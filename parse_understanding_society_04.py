@@ -45,6 +45,7 @@ def int_to_roman(num):
 
 
 def extractText(node):
+    """Extract text from all <something> of an elementree node."""
     chunks = []
     for sub in node.iter():
         add_brackets = False
@@ -61,9 +62,10 @@ def extractText(node):
 
     return "".join(chunks)
 
+
 def get_modules(root):
     """ 
-    Do a Depth-first search (DFS) from root, finding only modules 
+        Do a Depth-first search (DFS) from root, finding only modules 
     """
     module_elements = [] 
     for e in root.iter(): 
@@ -75,7 +77,7 @@ def get_modules(root):
 
 def get_questions(root):
     """ 
-    Do a Depth-first search (DFS) from root, finding only questions 
+        Do a Depth-first search (DFS) from root, finding only questions 
     """
     questions = []
     for e in root.iter(): 
@@ -87,7 +89,7 @@ def get_questions(root):
 
 def get_question_response(question_element):
     """ 
-        Do a Depth-first search (DFS) from question element, find it's response 
+        from question element, find it's response 
     """
 
     qi_label = 'qi_' + question_element.find('./context').text
@@ -212,7 +214,6 @@ def get_sequence(sequence_element):
     sequence_names =  ['ModuleName', 'Label']
     df_sequence = pd.DataFrame(columns = sequence_names)
     df_sequence.loc[len(df_sequence)] = [ModuleName, label]
-
     return df_sequence
 
 
@@ -279,10 +280,8 @@ def gimme_index(p, c):
             return n
 
 
-def get_useful_parent(e, parmap):
-    """
-        Only instested in module/question/condition/loop reletionship
-    """
+def _get_useful_parent(e, parmap):
+    """Only interested in module/question/condition/loop relationship."""
     tag_list = ['qsrx', 'module', 'if', 'loop', 'question']
  
     # print("/" + "="*78 + "\\")
@@ -300,6 +299,19 @@ def get_useful_parent(e, parmap):
             break
     # print("\\" + "="*78 + "/")
     return p
+
+
+def get_useful_parent_info(e, parmap):
+    """Get the meaningful parent and some other info about it."""
+
+    parent = _get_useful_parent(e, parmap)
+    # TODO: change MYKEY to meaningful
+    parent_key = parent.get('MYKEY')   # returns None if can't find
+    # parent_type = parent.tag
+    parent_type = 'CcSequence' if parent.tag == 'module' else 'CcCondition' if parent.tag == 'if' else 'CcLoop' if parent.tag == 'loop' else ''
+    if parent.tag == 'if' and parent_key is None:
+        raise RuntimeError('oh no')
+    return parent, parent_type, parent_key
 
 
 def TreeToTables(root, parmap):
@@ -326,27 +338,22 @@ def TreeToTables(root, parmap):
     TODO: parmap created in here. instead?
     """
 
-    dict_if = {}
-    df_q = {}
-    dict_mod = {}
-    dict_loop = {}
-
+    # a global variable we will update as we traverse the tree
     global_pos = 0
 
     def do_if(e):
-        """process and insert an element into the If Table return the key
+        """process a "if" element, extracting data needed for a row in the If Table.
  
-        TODO: uses df_if and parmap as global vars: improve?
+        TODO: uses parmap as global vars: improve?
 
         Args:
             An element of a elementree
 
         Returns:
-            The key/label that was generated and used.  The key is extracted
-            from the logic of the element.  In some cases it will have some
-            'i', 'ii', etc or similar added for uniqueness.
+            k (str): the key/label that was generated from the logic of
+                the element. May not be unique.
+            row (tuple): a row of data for the table.
 	"""
-
         logic = extractText(e.find('./condition'))
 
         if e.find('./sd_properties/label') is None:
@@ -361,45 +368,22 @@ def TreeToTables(root, parmap):
             k = logic.split(' ')[0]
         k = 'c_' + k
 
-        count = 0
-        kk = k
-        while True:
-            if dict_if.get(kk, False):
-                count += 1
-                kk = k + '_' + int_to_roman(count)
-            else:
-                break
-        k = kk
-
-        # possible refactor of duplicated code
-        parent = get_useful_parent(e, parmap)
-        parent_key = parent.get('MYKEY')   # returns None if can't find
-        # parent_type = parent.tag
-        parent_type = 'CcSequence' if parent.tag == 'module' else 'CcCondition' if parent.tag == 'if' else 'CcLoop' if parent.tag == 'loop' else ''
-
-        if parent.tag == 'if' and parent_key is None:
-            raise RuntimeError('oh no')
-
-        dict_if[k] = (literal, logic, parent_type, parent_key, None, global_pos)
-        return k, dict_if
+        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
+        return k, (literal, logic, parent_type, parent_key, None, global_pos)
 
 
     def do_loop(e):
-        """process and insert an element into the Loop Table return the key
+        """process a loop element, extracting data needed for a row in the Loop Table.
  
-        TODO: uses df_if and parmap as global vars: improve?
-
         Args:
             An element of a elementree
 
         Returns:
-            The key/label that was generated and used.  The key is extracted
-            from the logic of the element.  In some cases it will have some
-            'i', 'ii', etc or similar added for uniqueness.
+            k (str): the key/label that was generated from the loop logic
+                of the element. May not be unique.
+            row (tuple): a row of data for the table.
 	"""
-
         logic = e.attrib['args']
-
         if e.find('./sd_properties/label') is None: 
             loop_label = ''
         else:
@@ -411,45 +395,17 @@ def TreeToTables(root, parmap):
             k = re.findall(r'(foreach|for each|until) (\w+)*', logic.replace('[', '').replace('(', ''))[0][1].replace(':', '')
         else:
             k = 'Loop'
-
         k = 'l_' + k
-
-        count = 0
-        kk = k
-        while True:
-            if dict_loop.get(kk, False):
-                count += 1
-                kk = k + '_' + int_to_roman(count)
-            else:
-                break
-        k = kk
-
-        # possible refactor of duplicated code
-        parent = get_useful_parent(e, parmap)
-        parent_key = parent.get('MYKEY')   # returns None if can't find
-
-        parent_type = 'CcSequence' if parent.tag == 'module' else 'CcCondition' if parent.tag == 'if' else 'CcLoop' if parent.tag == 'loop' else ''
-
-        if parent.tag == 'if' and parent_key is None:
-            raise RuntimeError('oh no')
-
-        dict_loop[k] = (k, loop_label, logic, parent_type, parent_key, None, global_pos)
-       
-        return k, dict_loop
+        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
+        return k, (loop_label, logic, parent_type, parent_key, None, global_pos)
 
     def do_mod(e):
-
+        """
+        Returns a new single-line table with the module in it.
+        """
         label = e.find('./rm_properties/label').text
-       
         df_mod = get_sequence(e)
-
-        parent = get_useful_parent(e, parmap)
-        parent_key = parent.get('MYKEY')   # returns None if can't find
-
-        parent_type = 'CcSequence' if parent.tag == 'module' else 'CcCondition' if parent.tag == 'if' else 'CcLoop' if parent.tag == 'loop' else ''
-
-        if parent.tag == 'if' and parent_key is None:
-            raise RuntimeError('oh no')
+        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
 
         # manual fix
         if e.attrib['name'] not in ('hhgrid_w4', 'gridvariables_w4', 'household_w4', 'indintro_w3', 'proxy_w4' ):
@@ -465,20 +421,9 @@ def TreeToTables(root, parmap):
         return label, df_mod
 
     def do_q(e):
-        """insert e into the Question Table and return the key
-
-	TODO: do you need it to return key?
-        """
-
+        """insert e into the Question Table and return the key."""
         df_qi, df_response, df_codelist = get_question_response(e)
-
-        parent = get_useful_parent(e, parmap)
-        parent_key = parent.get('MYKEY')   # returns None if can't find
-
-        parent_type = 'CcSequence' if parent.tag == 'module' else 'CcCondition' if parent.tag == 'if' else 'CcLoop' if parent.tag == 'loop' else ''
-
-        if parent.tag == 'if' and parent_key is None:
-            raise RuntimeError('oh no')
+        parent, parent_type, parent_key = get_useful_parent_info(e, parmap)
         
         df_qi['parent_type'] = parent_type
         df_qi['parent_name'] = parent_key
@@ -487,7 +432,23 @@ def TreeToTables(root, parmap):
 
         return df_qi, df_response, df_codelist
 
+    def make_unique_key(k, d):
+        """Appends enough roman numerals until key is unique in dict."""
+        count = 0
+        kk = k
+        while True:
+            if d.get(kk, False):
+                count += 1
+                kk = k + '_' + int_to_roman(count)
+            else:
+                break
+        return kk
+
     # concate all elements together
+    # TODO: better to just create the df here
+    #dict_df = pandas.new_table_with_columns('KEY_TODO', 'LoopWhile', 'Logic', 'parent_type', 'parent_name', 'Branch', 'global_pos')
+    dict_if = {}
+    dict_loop = {}
     appended_question_answer = []
     appended_response = []
     appended_codelist = []
@@ -514,20 +475,25 @@ def TreeToTables(root, parmap):
             appended_sequence.append(df_sequence)
             e.set('MYKEY', k)
         elif e.tag.lower() == 'if':
-            k, dict_if = do_if(e)
+            k, row = do_if(e)
+            k = make_unique_key(k, dict_if)
+            dict_if[k] = row
             #print(k)
             e.set('MYKEY', k)
             #print(e)
             #input('press enter')
         elif e.tag.lower() == 'loop':
-            k, dict_loop = do_loop(e)
+            k, row = do_loop(e)
+            k = make_unique_key(k, dict_loop)
+            dict_loop[k] = row
             #print(k)
             e.set('MYKEY', k)
             #print(e)
             #input('got a loop, press enter')
         else:
             # raise RuntimeError('not handled yet')
-            print('not handled yet: {}'.format(e.tag))
+            #print('not handled yet: {}'.format(e.tag))
+            pass
 
     df_appended_question_answer = pd.concat(appended_question_answer)    
     df_appended_response = pd.concat(appended_response)
@@ -544,9 +510,8 @@ def TreeToTables(root, parmap):
 
     # dict_loop to df
     df_loop = pd.DataFrame(dict_loop).T.rename_axis('Label').add_prefix('Value').reset_index() 
-
-    df_loop.rename(columns={'Value1': 'LoopWhile', 'Value2': 'Logic', 'Value3': 'parent_type', 'Value4': 'parent_name', 'Value5': 'Branch', 'Value6': 'global_pos'}, inplace=True)
-    df_loop.drop('Value0', axis=1, inplace=True)
+    print(df_loop.head())
+    df_loop.rename(columns={'Value0': 'LoopWhile', 'Value1': 'Logic', 'Value2': 'parent_type', 'Value3': 'parent_name', 'Value4': 'Branch', 'Value5': 'global_pos'}, inplace=True)
 
     # sequence 
     df_appended_sequence = pd.concat(appended_sequence)  
