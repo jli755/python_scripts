@@ -77,7 +77,14 @@ def get_question_response(question_element):
 
     if not question_element.find('./qt_properties/iiposttext') is None:
         qi_instruction = extractText(question_element.find('./qt_properties/iiposttext'))
+    elif not question_element.find('./qt_properties/iipretext') is None:
+        qi_instruction = extractText(question_element.find('./qt_properties/iipretext'))
     else:
+        qi_instruction = ''
+
+    # shift instruction to literal
+    if qi_literal == '' and qi_instruction != '':
+        qi_literal = qi_instruction
         qi_instruction = ''
 
     qi_names =  ['QuestionLabel', 'Label', 'Literal', 'Instructions', 'Response']
@@ -252,11 +259,28 @@ def TreeToTables(root, parmap):
             literal = e.find('./sd_properties/label').text
  
         if any(ext in logic for ext in ['=', '>', '<', '-']):
-            k = re.findall(r'(\w+) *(=|>|<|-)', logic)[0][0]
+            l = re.findall(r'(\w*\.*\w+) *(=|>|<|-)', logic)
+            k_all = [item[0] for item in l]
+
+            k = l[0][0]
             #print('  new label is "{}"'.format(k))
         else:
-            k = logic.split(' ')[0]
+            all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
+            if all_capital_words == []:
+                k = logic.split(' ')[0]
+            else:
+                k = all_capital_words[0]   
+
+            k_all = [k]
+
         k = 'c_q' + k
+  
+        # add qc_ to the question namesiipretext
+        for st in k_all:
+            if st in logic:
+                logic = logic.replace(st, 'qc_' + st)
+
+        logic = logic.replace('=', " == ").replace('<>', ' != ').replace(' | ', ' || ').replace(' OR ', ' || ').replace(' or ', ' || ').replace(' & ', ' && ').replace(' AND ', ' && ').replace(' and ', ' && ')
 
         parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
         return k, (literal, logic, parent_type, parent_key, branch, global_pos)
@@ -269,11 +293,11 @@ def TreeToTables(root, parmap):
             An element of a elementree
 
         Returns:
-            k (str): the key/label that was generated from the loop logic
+            k (str): the key/label that was generated from the loop_while
                 of the element. May not be unique.
             row (tuple): a row of data for the table.
 	"""
-        logic = e.attrib['args']
+        loop_while = e.attrib['args']
         if e.find('./sd_properties/label') is None: 
             loop_label = ''
         else:
@@ -281,13 +305,13 @@ def TreeToTables(root, parmap):
 
         if loop_label != '':
             k = loop_label.split(' ')[0]
-        elif any(ext in logic for ext in ['foreach', 'for each', 'until']):
-            k = re.findall(r'(foreach|for each|until) (\w+)*', logic.replace('[', '').replace('(', ''))[0][1].replace(':', '')
+        elif any(ext in loop_while for ext in ['foreach', 'for each', 'until']):
+            k = re.findall(r'(foreach|for each|until) (\w+)*', loop_while.replace('[', '').replace('(', ''))[0][1].replace(':', '')
         else:
             k = 'Loop'
-        k = 'l_' + k
+        label = 'l_' + k
         parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
-        return k, (loop_label, logic, parent_type, parent_key, branch, global_pos)
+        return label, (k, loop_while, parent_type, parent_key, branch, global_pos)
 
     def do_mod(e):
         """
@@ -401,7 +425,7 @@ def TreeToTables(root, parmap):
     # dict_loop to df
     df_loop = pd.DataFrame(dict_loop).T.rename_axis('Label').add_prefix('Value').reset_index() 
     print(df_loop.head())
-    df_loop.rename(columns={'Value0': 'LoopWhile', 'Value1': 'Logic', 'Value2': 'parent_type', 'Value3': 'parent_name', 'Value4': 'Branch', 'Value5': 'global_pos'}, inplace=True)
+    df_loop.rename(columns={'Value0': 'Loop_Var', 'Value1': 'Loop_While', 'Value2': 'parent_type', 'Value3': 'parent_name', 'Value4': 'Branch', 'Value5': 'global_pos'}, inplace=True)
 
     # sequence 
     df_appended_sequence = pd.concat(appended_sequence)  
