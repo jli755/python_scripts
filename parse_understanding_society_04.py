@@ -283,7 +283,7 @@ def TreeToTables(root, parmap):
         logic = logic.replace('=', " == ").replace('<>', ' != ').replace(' | ', ' || ').replace(' OR ', ' || ').replace(' or ', ' || ').replace(' & ', ' && ').replace(' AND ', ' && ').replace(' and ', ' && ')
 
         parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
-        return k, (literal, logic, parent_type, parent_key, branch, global_pos)
+        return k, (literal, logic, k_all, parent_type, parent_key, branch, global_pos)
 
 
     def do_loop(e):
@@ -416,16 +416,31 @@ def TreeToTables(root, parmap):
 
     df_appended_response = df_appended_response.drop_duplicates(keep = 'first', inplace=False)
 
+    # question long/short names
+    dict_qi_names = dict(zip(df_appended_question_answer['QuestionLabel'].str.replace('qi_', ''), df_appended_question_answer['Label'].str.replace('qi_', '')))
+    # print(len(dict_qi_names))
+
     df_appended_question_answer.drop('Label', axis=1, inplace=True)
 
     # dict_if to df
     df_condition = pd.DataFrame(dict_if).T.rename_axis('Label').add_prefix('Value').reset_index() 
+    df_condition.rename(columns={'Value0': 'Literal', 'Value1': 'Logic', 'Value2': 'Logic_q_names', 'Value3': 'parent_type', 'Value4': 'parent_name', 'Value5': 'Branch', 'Value6': 'global_pos'}, inplace=True)
 
-    df_condition.rename(columns={'Value0': 'Literal', 'Value1': 'Logic', 'Value2': 'parent_type', 'Value3': 'parent_name', 'Value4': 'Branch', 'Value5': 'global_pos'}, inplace=True)
+
+    # modify condition table logic field: if the question is not in the parsed questions, then delete that part in logic
+    tmp = df_condition[['Label', 'Logic', 'Logic_q_names']]
+    tmp['exist_q'] = tmp['Logic_q_names'].apply(lambda x: [i in dict_qi_names.values() for i in x])
+    tmp['logic_parts'] = tmp['Logic'].apply(lambda x: re.findall('\w*\.*\w+[ ]{1,}==[ ]{1,}\w*|\w*\.*\w+[ ]{1,}>[ ]{1,}\w*|\w*\.*\w+[ ]{1,}<[ ]{1,}\w*|\w*\.*\w+[ ]{1,}!=[ ]{1,}\w*',x))
+    tmp['index_parts'] = tmp['exist_q'].apply(lambda x: [idx for idx in range(len(x)) if x[idx] == False])
+    tmp['Logic_new'] = tmp.apply(lambda row: None if not True in row['exist_q'] else [row['logic_parts'][i] for i in row['exist_q']] if (False in row['exist_q'] and row['logic_parts'] != []) else row['Logic'], axis=1)
+
+    tmp.to_csv('TMP.csv', sep=';')
+
+
 
     # dict_loop to df
     df_loop = pd.DataFrame(dict_loop).T.rename_axis('Label').add_prefix('Value').reset_index() 
-    print(df_loop.head())
+    # print(df_loop.head())
     df_loop.rename(columns={'Value0': 'Loop_Var', 'Value1': 'Loop_While', 'Value2': 'parent_type', 'Value3': 'parent_name', 'Value4': 'Branch', 'Value5': 'global_pos'}, inplace=True)
 
     # sequence 
@@ -560,13 +575,11 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
     df_loop_if_qi_mmm['new_label'] = df_loop_if_qi_mmm.apply(lambda row: row['QuestionLabel_x'].replace('qi_', 'l_q') if not pd.isnull(row['QuestionLabel_x'])  else row['QuestionLabel_y'].replace('qi_', 'l_q'), axis = 1)
 
     dict_loop_label1 = dict(zip(df_loop_if_qi_mmm['old_label'], df_loop_if_qi_mmm['new_label']))
-    print(dict_loop_label1)
 
     df_loop_qi['new_label'] = df_loop_qi['QuestionLabel'].str.replace('qi_', 'l_q')
-    dict_loop_label = dict(zip(df_qi_loop_min['old_label'], df_qi_loop_min['new_label']))
+    dict_loop_label = dict(zip(df_loop_qi['old_label'], df_loop_qi['new_label']))
     # join both dict
     dict_loop_label.update(dict_loop_label1)
-    print(dict_loop_label)
 
     # update loop labels
     df_qi['parent_name'] = df_qi['parent_name'].map(dict_loop_label).fillna(df_qi['parent_name'])
