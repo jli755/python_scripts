@@ -48,13 +48,13 @@ def get_new_label(df):
 
 
 def main():
-    input_dir = '../LSYPE1/wave4-html'
+    input_dir = '../LSYPE1/wave1-html'
     output_dir = os.path.join(input_dir, 'clean_code_input')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     df_codes = pd.read_csv(os.path.join(input_dir, 'codes.csv'), sep=';')
-
+    df_codes['value'] = df_codes['value'].apply(lambda x: int(x) if not pd.isnull(x) else x)
     df_codes = df_codes.drop('Number', 1)
 
 
@@ -65,12 +65,13 @@ def main():
     df_codes_dict.to_csv(os.path.join(output_dir, 'codes.csv'), encoding='utf-8', sep=';', index=False)
 
     df_qg = pd.read_csv(os.path.join(input_dir, 'question_grids.csv'), sep=';')
-    df_qg['horizontal_code_list_name'] = df_qg['horizontal_code_list_name'].map(label_dict)
-    df_qg['vertical_code_list_name'] = df_qg['vertical_code_list_name'].map(label_dict)
+    df_qg['horizontal_code_list_name'] = df_qg['horizontal_code_list_name'].map(label_dict).fillna(df_qg['horizontal_code_list_name'])
+    df_qg['vertical_code_list_name'] = df_qg['vertical_code_list_name'].map(label_dict).fillna(df_qg['vertical_code_list_name'])
     df_qg.to_csv(os.path.join(output_dir, 'question_grids.csv'), encoding='utf-8', sep=';', index=False)
 
     df_qi = pd.read_csv(os.path.join(input_dir, 'question_items.csv'), sep=';')
-    df_qi['Response'] = df_qi['Response'].map(label_dict)
+    df_qi['Response'] = df_qi['Response'].map(label_dict).fillna(df_qi['Response'])
+
     df_qi.to_csv(os.path.join(output_dir, 'question_items.csv'), encoding='utf-8', sep=';', index=False)
 
     df_loops = pd.read_csv(os.path.join(input_dir, 'loops.csv'), sep=';')
