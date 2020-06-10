@@ -337,6 +337,7 @@ def TreeToTables(root, parmap):
     def do_q(e):
         """insert e into the Question Table and return the key."""
         df_qi, df_response, df_codelist = get_question_response(e)
+
         parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
         
         df_qi['parent_type'] = parent_type
@@ -429,8 +430,15 @@ def TreeToTables(root, parmap):
 
     # sequence 
     df_appended_sequence = pd.concat(appended_sequence)  
-#    df_appended_sequence.loc[len(df_appended_sequence)] = ['Individual Questionnaire', 'Individual Questionnaire',  'CcSequence', 'main04', None, 8280]
     df_appended_sequence= df_appended_sequence.sort_values('global_pos')
+
+    # reset index
+    df_appended_question_answer.reset_index(drop=True, inplace=True)
+    df_appended_response.reset_index(drop=True, inplace=True)
+    df_appended_codelist.reset_index(drop=True, inplace=True)
+    df_condition.reset_index(drop=True, inplace=True)
+    df_appended_sequence.reset_index(drop=True, inplace=True)
+    df_loop.reset_index(drop=True, inplace=True)
 
     return (df_appended_question_answer, df_appended_response, df_appended_codelist, df_condition, df_appended_sequence, df_loop)
 
@@ -521,9 +529,60 @@ def update_codelist(df_codelist, df_qi):
     df_codes_dict = pd.concat(codes_dict, axis=0).reset_index().drop('level_1', 1)
     df_codes_dict.rename(columns={'level_0': 'Label'}, inplace=True)
 
-    df_qi['Response'] = df_qi['Response'].map(label_dict)
+    df_qi['Response'].update(pd.Series(label_dict))
 
     return df_codes_dict, df_qi
+
+
+def update_loop_condition_label(df_qi, df_condition, df_loop):
+    """
+        Label is:
+            Loop: l_q + first question name
+            Condition: if no logic, c_q + first question name
+    """
+
+    # loop then question
+    df_loop_qi = df_qi.loc[(df_qi.parent_type == 'CcLoop') & (df_qi.Position == 1), ['parent_name', 'QuestionLabel']]
+    df_loop_qi.rename(columns={'parent_name': 'old_label'}, inplace=True)
+    # if then question
+    df_if_qi = df_qi.loc[(df_qi.parent_type == 'CcCondition') & (df_qi.Position == 1), ['parent_name', 'QuestionLabel']]
+    # loop then if
+    df_loop_if = df_condition.loc[(df_condition.parent_type == 'CcLoop') & (df_condition.Position == 1), ['parent_name', 'Label']]
+    # if then if
+    df_if_if = df_condition.loc[(df_condition.parent_type == 'CcCondition') & (df_condition.Position == 1), ['parent_name', 'Label']]
+
+    # loop then if then question
+    df_loop_if_qi_m = df_loop_if.merge(df_if_qi, how='left', left_on = 'Label', right_on = 'parent_name')
+    df_loop_if_qi_m.rename(columns={'parent_name_x': 'old_label'}, inplace=True)
+    # one case of loop, if, if, question
+    df_loop_if_qi_mm = df_loop_if_qi_m.merge(df_if_if, how='left', left_on = 'Label', right_on = 'parent_name')
+    df_loop_if_qi_mmm = df_loop_if_qi_mm.merge(df_if_qi, how='left', left_on = 'Label_y', right_on = 'parent_name')
+    df_loop_if_qi_mmm['new_label'] = df_loop_if_qi_mmm.apply(lambda row: row['QuestionLabel_x'].replace('qi_', 'l_q') if not pd.isnull(row['QuestionLabel_x'])  else row['QuestionLabel_y'].replace('qi_', 'l_q'), axis = 1)
+
+    dict_loop_label1 = dict(zip(df_loop_if_qi_mmm['old_label'], df_loop_if_qi_mmm['new_label']))
+    print(dict_loop_label1)
+
+    df_loop_qi['new_label'] = df_loop_qi['QuestionLabel'].str.replace('qi_', 'l_q')
+    dict_loop_label = dict(zip(df_qi_loop_min['old_label'], df_qi_loop_min['new_label']))
+    # join both dict
+    dict_loop_label.update(dict_loop_label1)
+    print(dict_loop_label)
+
+    # update loop labels
+    df_qi['parent_name'] = df_qi['parent_name'].map(dict_loop_label).fillna(df_qi['parent_name'])
+    df_condition['parent_name'] = df_condition['parent_name'].map(dict_loop_label).fillna(df_condition['parent_name'])
+    df_loop['parent_name'] = df_loop['parent_name'].map(dict_loop_label).fillna(df_loop['parent_name'])
+    df_loop['Label'] = df_loop['Label'].map(dict_loop_label).fillna(df_loop['Label'])
+
+
+
+    # update condition label only if it has no logic text
+    # Condition then question
+    df_qi_condition = df_qi.loc[(df_qi.parent_type == 'CcCondition'), ['parent_name', 'QuestionLabel', 'Position']]
+    df_qi_condition_min = df_qi_condition.loc[df_qi_condition.groupby('parent_name')['Position'].idxmin()]
+
+
+    return df_qi, df_condition, df_loop
 
 
 def manual_fix(df_sequence):
@@ -566,8 +625,15 @@ def main():
     df_qi, df_response, df_codelist, df_condition, df_sequence, df_loop = TreeToTables(root, parent_map)
 
     df_qi, df_condition, df_loop, df_sequence = update_position(df_qi, df_condition, df_loop, df_sequence)
+    df_qi.to_csv(os.path.join(output_dir, 'question_items_TMP.csv'), encoding='utf-8', sep=';', index=False)
 
+    # same codelist can be used for multiple questions
     df_codes_dict, df_qi = update_codelist(df_codelist, df_qi)
+
+    # update loop and if labels: use first question name
+    df_qi, df_condition, df_loop = update_loop_condition_label(df_qi, df_condition, df_loop)
+
+    # manual fix the sequence layout
     df_sequence = manual_fix(df_sequence)
 
     df_qi.to_csv(os.path.join(output_dir, 'question_items.csv'), encoding='utf-8', sep=';', index=False)
