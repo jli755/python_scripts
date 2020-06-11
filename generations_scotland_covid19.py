@@ -90,7 +90,7 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    fn = os.path.join(input_dir, 'Generation_Scotland (Tables - Ver2).xls') 
+    fn = os.path.join(input_dir, 'Generation_Scotland (Tables - Ver4).xls') 
     # creating pandas.io.excel.ExcelFile object
     xl = pd.ExcelFile(fn)
     #  generate a dictionary of DataFrames
@@ -158,7 +158,7 @@ def main():
 
     # sort by column "Number"
     df_questions = df_questions.sort_values('Order')
-    df_questions['Response_domain'] = df_questions['Response_domain'].str.rstrip()
+    df_questions['Response_domain'] = df_questions['Response_domain'].str.rstrip().str.replace('cs_173','cs_q173')
 
     # In the questions table you will find two new columns to note min and max of the cardinality. 
     df_questions.rename(columns={'Order': 'start_position', 'min': 'min_responses', 'max': 'max_responses'}, inplace=True)
@@ -194,7 +194,7 @@ def main():
 
 
     # clean code list
-    df_codes, df_questions = update_codelist(df_codes, df_questions)
+#    df_codes, df_questions = update_codelist(df_codes, df_questions)
 
 
     """
@@ -252,7 +252,7 @@ def main():
 
     df_response.drop('source', 1).to_csv(os.path.join(output_dir, 'response.csv'), encoding='utf-8', index=False, sep=';')
 
-    df_codes.to_csv(os.path.join(output_dir, 'codelist.csv'), encoding='utf-8', index=False, sep=';')
+    df_codes.drop('source', 1).to_csv(os.path.join(output_dir, 'codelist.csv'), encoding='utf-8', index=False, sep=';')
 
 
 if __name__ == '__main__':
