@@ -73,4 +73,7 @@
 
 ## June 2020
 
-1. [] [Understanding Society](https://www.understandingsociety.ac.uk/documentation/mainstage/questionnaires)
+1. [x] Generation Scotland COVID19 Study
+    1. [Wave 1](https://wiki.ucl.ac.uk/display/CTTEAM/Generation+Scotland+COVID19+Study)
+
+2. [] [Understanding Society](https://www.understandingsociety.ac.uk/documentation/mainstage/questionnaires)
