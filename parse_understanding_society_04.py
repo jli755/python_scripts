@@ -258,12 +258,18 @@ def TreeToTables(root, parmap):
         else:
             literal = e.find('./sd_properties/label').text
  
-        if any(ext in logic for ext in ['=', '>', '<', '-']):
-            l = re.findall(r'(\w*\.*\w+) *(=|>|<|-)', logic)
-            k_all = [item[0] for item in l]
-
-            k = l[0][0]
-            #print('  new label is "{}"'.format(k))
+        if any(ext in logic for ext in ['=', '>', '<']):
+            l = re.findall(r'(\w*\.*\w+) *(=|>|<)', logic)
+            if l != []:
+                k_all = [item[0] for item in l]
+                k = l[0][0]
+            else:
+                all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
+                if all_capital_words == []:
+                    k = logic.split(' ')[0]
+                else:
+                    k = all_capital_words[0]
+                k_all = [k]
         else:
             all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
             if all_capital_words == []:
@@ -426,17 +432,23 @@ def TreeToTables(root, parmap):
     df_condition = pd.DataFrame(dict_if).T.rename_axis('Label').add_prefix('Value').reset_index() 
     df_condition.rename(columns={'Value0': 'Literal', 'Value1': 'Logic', 'Value2': 'Logic_q_names', 'Value3': 'parent_type', 'Value4': 'parent_name', 'Value5': 'Branch', 'Value6': 'global_pos'}, inplace=True)
 
-
     # modify condition table logic field: if the question is not in the parsed questions, then delete that part in logic
-    tmp = df_condition[['Label', 'Logic', 'Logic_q_names']]
-    tmp['exist_q'] = tmp['Logic_q_names'].apply(lambda x: [i in dict_qi_names.values() for i in x])
-    tmp['logic_parts'] = tmp['Logic'].apply(lambda x: re.findall('\w*\.*\w+[ ]{1,}==[ ]{1,}\w*|\w*\.*\w+[ ]{1,}>[ ]{1,}\w*|\w*\.*\w+[ ]{1,}<[ ]{1,}\w*|\w*\.*\w+[ ]{1,}!=[ ]{1,}\w*',x))
-    tmp['index_parts'] = tmp['exist_q'].apply(lambda x: [idx for idx in range(len(x)) if x[idx] == False])
-    tmp['Logic_new'] = tmp.apply(lambda row: None if not True in row['exist_q'] else [row['logic_parts'][i] for i in row['exist_q']] if (False in row['exist_q'] and row['logic_parts'] != []) else row['Logic'], axis=1)
+    # tmp = df_condition[['Label', 'Logic', 'Logic_q_names']]
+    df_condition['exist_q'] = df_condition['Logic_q_names'].apply(lambda x: [i in dict_qi_names.values() for i in x])
+    df_condition['Logic_parts'] = df_condition['Logic'].apply(lambda x: re.findall('\w*\.*\w+[ ]{1,}==[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*|\w*\.*\w+[ ]{1,}>[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*|\w*\.*\w+[ ]{1,}<[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*|\w*\.*\w+[ ]{1,}!=[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*',x))
+    df_condition['Logic_new'] = df_condition.apply(lambda row: [row['Logic_parts'][i] for i, e in enumerate(row['exist_q']) if e == False and row['Logic_parts'] != []] if False in row['exist_q'] else row['Logic'], axis=1)
 
-    tmp.to_csv('TMP.csv', sep=';')
+    def replace_multiple_str(s, l):
+        for item in l:
+            s = s.replace(item, '')
+        return s
 
+    df_condition['Logic_new_n'] = df_condition.apply(lambda row: '' if not True in row['exist_q'] else row['Logic'] if all(x==True for x in row['exist_q']) else replace_multiple_str(row['Logic'], row['Logic_new']), axis=1)
+    df_condition['Logic_clean'] = df_condition['Logic_new_n'].apply(lambda x: re.sub(' \$\$| \|\|$|^\$\$ |\|\| ', '', x))
 
+    df_condition.drop(['Logic', 'Logic_q_names', 'exist_q', 'Logic_parts', 'Logic_new', 'Logic_new_n'], axis=1, inplace=True)
+    df_condition.rename(columns={'Logic_clean': 'Logic'}, inplace=True)
+    df_condition = df_condition[['Label', 'Literal', 'Logic', 'parent_type', 'parent_name', 'Branch', 'global_pos']]
 
     # dict_loop to df
     df_loop = pd.DataFrame(dict_loop).T.rename_axis('Label').add_prefix('Value').reset_index() 
@@ -590,9 +602,102 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
 
 
     # update condition label only if it has no logic text
-    # Condition then question
-    df_qi_condition = df_qi.loc[(df_qi.parent_type == 'CcCondition'), ['parent_name', 'QuestionLabel', 'Position']]
-    df_qi_condition_min = df_qi_condition.loc[df_qi_condition.groupby('parent_name')['Position'].idxmin()]
+    def find_first_q(if_label, df_condition, df_loop, df_qi):
+        #Given condition name, find it's first question name
+        question_name = ''
+        loop_label = ''
+        #i = 1
+        while question_name == '':
+            #print(i)
+            df_condition_sub = df_condition.loc[(df_condition.parent_type == 'CcCondition') & (df_condition.Position == 1) & (df_condition.parent_name == if_label), ['parent_name', 'Label']]
+            df_loop_sub = df_loop.loc[(df_loop.parent_type == 'CcCondition') & (df_loop.Position == 1) & (df_loop.parent_name == if_label),  ['parent_name', 'Label']]
+            df_qi_sub = df_qi.loc[(df_qi.parent_type == 'CcCondition') & (df_qi.Position == 1) & (df_qi.parent_name == if_label), ['parent_name', 'QuestionLabel']]
+
+            df_condition_sub1 = df_condition.loc[(df_condition.parent_type == 'CcLoop') & (df_condition.Position == 1) & (df_condition.parent_name == loop_label), ['parent_name', 'Label']]
+            df_loop_sub1 = df_loop.loc[(df_loop.parent_type == 'CcLoop') & (df_loop.Position == 1) & (df_loop.parent_name == loop_label),  ['parent_name', 'Label']]
+            df_qi_sub1 = df_qi.loc[(df_qi.parent_type == 'CcLoop') & (df_qi.Position == 1) & (df_qi.parent_name == loop_label), ['parent_name', 'QuestionLabel']]
+
+            if not df_condition_sub.empty:
+                if_label = df_condition_sub['Label'].values[0]
+                loop_label = ''
+                question_name == ''
+                #print('1 condition')
+            elif not df_loop_sub.empty:
+                loop_label = df_loop_sub['Label'].values[0]
+                if_label = ''
+                question_name == ''
+                #print('1 loop')
+            elif not df_qi_sub.empty:
+                question_name = df_qi_sub['QuestionLabel'].values[0]
+                #print('1 question')
+            elif not df_condition_sub1.empty:
+                if_label = df_condition_sub1['Label'].values[0]
+                loop_label = ''
+                question_name == ''
+                #print('2 condition')
+            elif not df_loop_sub1.empty:
+                loop_label = df_loop_sub1['Label'].values[0]
+                if_label = ''
+                question_name == ''
+                #print('2 loop')
+            elif not df_qi_sub1.empty:
+                question_name = df_qi_sub1['QuestionLabel'].values[0]
+                #print('3 question')
+            else:
+                #print('no first question?')
+                # print(if_label)
+                question_name = 'unknown'
+            #i = i + 1
+        return question_name
+
+
+    def relabel_if(logic):
+
+        if any(ext in logic for ext in ['==', '!=', '<', '>']):
+            l = re.findall(r'(\w*\.*\w+) *(==|!=|>|<)', logic)
+            if l != []:
+                k_all = [item[0] for item in l]
+                k = l[0][0]
+            else:
+                all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
+                if all_capital_words == []:
+                    k = logic.split(' ')[0]
+                else:
+                    k = all_capital_words[0]
+                k_all = [k]
+        else:
+            all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
+            if all_capital_words == []:
+                k = logic.split(' ')[0]
+            else:
+                k = all_capital_words[0]   
+
+            k_all = [k]
+
+        k = 'c_q' + k.replace('qc_', '')
+        return k
+
+    df_condition['first_question'] = df_condition.apply(lambda row: find_first_q(row['Label'], df_condition, df_loop, df_qi) if row['Logic'] == '' else '', axis=1)
+    df_condition.to_csv('TMP.csv', sep=';', index=False)
+    #df_condition['new_label'] = df_condition.apply(lambda row: row['first_question'].replace('qi_', 'c_q') if row['first_question'] != '' else relabel_if(row['Logic']), axis=1)
+    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else row['first_question'].replace('qi_', 'c_q'), axis=1)
+
+    df_condition['tmp'] = df_condition.groupby('new_label').cumcount()
+    df_condition['new_label_num'] = df_condition['new_label'].str.cat(df_condition['tmp'].astype(str), sep="_")
+    df_condition['new_label_roman'] = df_condition['new_label_num'].apply(lambda x: '_'.join([x.rsplit('_',1)[0], int_to_roman(int(x.rsplit('_',1)[1]))]))
+    df_condition['new_label_roman'] = df_condition['new_label_roman'].str.replace('_0', '')
+
+    df_condition.to_csv('TMP.csv', sep=';', index=False)
+
+    dict_if_label = dict(zip(df_condition['Label'], df_condition['new_label_roman']))
+    df_condition.drop(['first_question', 'new_label', 'tmp', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
+ 
+
+    # update condition labels
+    df_qi['parent_name'] = df_qi['parent_name'].map(dict_if_label).fillna(df_qi['parent_name'])
+    df_condition['parent_name'] = df_condition['parent_name'].map(dict_if_label).fillna(df_condition['parent_name'])
+    df_loop['parent_name'] = df_loop['parent_name'].map(dict_if_label).fillna(df_loop['parent_name'])
+    df_condition['Label'] = df_condition['Label'].map(dict_if_label).fillna(df_condition['Label'])
 
 
     return df_qi, df_condition, df_loop
@@ -638,7 +743,7 @@ def main():
     df_qi, df_response, df_codelist, df_condition, df_sequence, df_loop = TreeToTables(root, parent_map)
 
     df_qi, df_condition, df_loop, df_sequence = update_position(df_qi, df_condition, df_loop, df_sequence)
-    df_qi.to_csv(os.path.join(output_dir, 'question_items_TMP.csv'), encoding='utf-8', sep=';', index=False)
+    # df_qi.to_csv(os.path.join(output_dir, 'question_items_TMP.csv'), encoding='utf-8', sep=';', index=False)
 
     # same codelist can be used for multiple questions
     df_codes_dict, df_qi = update_codelist(df_codelist, df_qi)
