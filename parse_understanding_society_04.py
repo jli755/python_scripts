@@ -114,7 +114,7 @@ def get_question_response(question_element):
     # text response
     elif question_element.attrib['type'] in ('text', 'string'): 
         response_label = 'Generic text'
-        df_response.loc[len(df_response)] = [response_label, 'text', None, None, None]
+        df_response.loc[len(df_response)] = [response_label, 'Text', None, None, None]
     # numeric response
     elif question_element.attrib['type'] == 'number':
         decim = question_element.find('./qt_properties/decimals').text
@@ -282,7 +282,7 @@ def TreeToTables(root, parmap):
         k = 'c_q' + k
   
         # add qc_ to the question namesiipretext
-        for st in k_all:
+        for st in set(k_all):
             if st in logic:
                 logic = logic.replace(st, 'qc_' + st)
 
@@ -326,12 +326,6 @@ def TreeToTables(root, parmap):
         label = e.find('./rm_properties/label').text
         df_mod = get_sequence(e)
         parent, parent_type, parent_key, branch = get_useful_parent_info(e, parmap)
-
-        # manual fix
-#        if e.attrib['name'] not in ('hhgrid_w4', 'gridvariables_w4', 'household_w4', 'indintro_w3', 'proxy_w4' ):
-#            parent_key = 'Individual Questionnaire'
-#        else:
-#            parent_key = 'main04'
         
         df_mod['parent_type'] = 'CcSequence'
         df_mod['parent_name'] = parent_key
@@ -423,8 +417,13 @@ def TreeToTables(root, parmap):
     df_appended_response = df_appended_response.drop_duplicates(keep = 'first', inplace=False)
 
     # question long/short names
-    dict_qi_names = dict(zip(df_appended_question_answer['QuestionLabel'].str.replace('qi_', ''), df_appended_question_answer['Label'].str.replace('qi_', '')))
-    # print(len(dict_qi_names))
+#    print(df_appended_question_answer.head(1).transpose())
+#    dict_qi_names = dict(zip(df_appended_question_answer['QuestionLabel'].str.replace('qi_', ''), df_appended_question_answer['Label'].str.replace('qi_', '')))
+#    print(len(dict_qi_names))
+#    print(dict_qi_names.values())
+    df_qi_name_pos = df_appended_question_answer.loc[:, ['QuestionLabel', 'Label', 'global_pos']]
+    df_qi_name_pos['QuestionLabel'] = df_qi_name_pos['QuestionLabel'].str.replace('qi_', '')
+    df_qi_name_pos['Label'] = df_qi_name_pos['Label'].str.replace('qi_', '')
 
     df_appended_question_answer.drop('Label', axis=1, inplace=True)
 
@@ -434,21 +433,46 @@ def TreeToTables(root, parmap):
 
     # modify condition table logic field: if the question is not in the parsed questions, then delete that part in logic
     # tmp = df_condition[['Label', 'Logic', 'Logic_q_names']]
-    df_condition['exist_q'] = df_condition['Logic_q_names'].apply(lambda x: [i in dict_qi_names.values() for i in x])
+    df_condition['exist_q'] = df_condition['Logic_q_names'].apply(lambda x: [i in df_qi_name_pos['Label'].tolist() for i in x])
     df_condition['Logic_parts'] = df_condition['Logic'].apply(lambda x: re.findall('\w*\.*\w+[ ]{1,}==[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*|\w*\.*\w+[ ]{1,}>[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*|\w*\.*\w+[ ]{1,}<[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*|\w*\.*\w+[ ]{1,}!=[ ]{1,}\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*\w*\|*',x))
     df_condition['Logic_new'] = df_condition.apply(lambda row: [row['Logic_parts'][i] for i, e in enumerate(row['exist_q']) if e == False and row['Logic_parts'] != []] if False in row['exist_q'] else row['Logic'], axis=1)
 
     def replace_multiple_str(s, l):
+        """Replace item if a list with empty string"""
         for item in l:
             s = s.replace(item, '')
         return s
 
-    df_condition['Logic_new_n'] = df_condition.apply(lambda row: '' if not True in row['exist_q'] else row['Logic'] if all(x==True for x in row['exist_q']) else replace_multiple_str(row['Logic'], row['Logic_new']), axis=1)
-    df_condition['Logic_clean'] = df_condition['Logic_new_n'].apply(lambda x: re.sub(' \$\$| \|\|$|^\$\$ |\|\| ', '', x))
+    # rename logic text: Condition logic referring to a question should match it exactly so qc_PERGRID == 0 should be qc_hhgrid_w4_pergrid == 0
+    def replace_logic_text(s, l, logic_pos, df_qi_name_pos):
+        """Find the closest full question name to replace the question label"""
+        for item in l:
+            df = df_qi_name_pos.loc[(df_qi_name_pos.Label == item), :] 
+            if not df.empty:
+                df['diff_pos'] = logic_pos - df['global_pos']
+                new_label = df[df['diff_pos'] == df['diff_pos'].min()]['QuestionLabel'].values[0]
+
+                s = s.replace(item, new_label)
+            else:
+                s = s
+        return s
+
+    print(df_qi_name_pos.loc[df_qi_name_pos.Label=='YNEW',:])
+
+
+    df_condition['Logic_re'] = df_condition.apply(lambda row: replace_logic_text(row['Logic'], row['Logic_q_names'], row['global_pos'], df_qi_name_pos), axis=1)
+
+    df_condition['Logic_new_n'] = df_condition.apply(lambda row: '' if not True in row['exist_q'] else replace_logic_text(row['Logic_re'], row['Logic_q_names'], row['global_pos'], df_qi_name_pos) if all(x==True for x in row['exist_q']) else replace_multiple_str(row['Logic_re'], row['Logic_new']), axis=1)
+
+    df_condition['Logic_clean'] = df_condition['Logic_new_n'].apply(lambda x: re.sub('^ \$\$ |^ \|\| ', '', x))
+
+    # rename label: Conditions are labelled after the last part of the question e.g. c_qhhgrid_w4_pergrid should be c_qpergrid_i and c_qPERGRID should be c_qpergrid_ii.
 
     df_condition.drop(['Logic', 'Logic_q_names', 'exist_q', 'Logic_parts', 'Logic_new', 'Logic_new_n'], axis=1, inplace=True)
     df_condition.rename(columns={'Logic_clean': 'Logic'}, inplace=True)
     df_condition = df_condition[['Label', 'Literal', 'Logic', 'parent_type', 'parent_name', 'Branch', 'global_pos']]
+
+    #df_condition.to_csv('TMP.csv', sep=';', index=False)
 
     # dict_loop to df
     df_loop = pd.DataFrame(dict_loop).T.rename_axis('Label').add_prefix('Value').reset_index() 
@@ -674,20 +698,19 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
 
             k_all = [k]
 
-        k = 'c_q' + k.replace('qc_', '')
+        k = 'c_q' + k.replace('.','_').split('_')[-1].upper()
         return k
 
     df_condition['first_question'] = df_condition.apply(lambda row: find_first_q(row['Label'], df_condition, df_loop, df_qi) if row['Logic'] == '' else '', axis=1)
-    df_condition.to_csv('TMP.csv', sep=';', index=False)
-    #df_condition['new_label'] = df_condition.apply(lambda row: row['first_question'].replace('qi_', 'c_q') if row['first_question'] != '' else relabel_if(row['Logic']), axis=1)
-    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else row['first_question'].replace('qi_', 'c_q'), axis=1)
+
+    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else 'c_q' + row['first_question'].split('_')[-1].upper(), axis=1)
 
     df_condition['tmp'] = df_condition.groupby('new_label').cumcount()
     df_condition['new_label_num'] = df_condition['new_label'].str.cat(df_condition['tmp'].astype(str), sep="_")
     df_condition['new_label_roman'] = df_condition['new_label_num'].apply(lambda x: '_'.join([x.rsplit('_',1)[0], int_to_roman(int(x.rsplit('_',1)[1]))]))
     df_condition['new_label_roman'] = df_condition['new_label_roman'].str.replace('_0', '')
 
-    df_condition.to_csv('TMP.csv', sep=';', index=False)
+    df_condition.to_csv('TMP1.csv', sep=';', index=False)
 
     dict_if_label = dict(zip(df_condition['Label'], df_condition['new_label_roman']))
     df_condition.drop(['first_question', 'new_label', 'tmp', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
