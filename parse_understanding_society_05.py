@@ -577,6 +577,7 @@ def update_codelist(df_codelist, df_qi):
     """
 
     label_dict, codes_dict = get_new_label(df_codelist)
+    print(print("\n".join("{}\t{}".format(k, v) for k, v in label_dict.items())))
     df_codes_dict = pd.concat(codes_dict, axis=0).reset_index().drop('level_1', 1)
     df_codes_dict.rename(columns={'level_0': 'Label'}, inplace=True)
 
@@ -592,44 +593,12 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
             Condition: if no logic, c_q + first question name
     """
 
-    # loop then question
-    df_loop_qi = df_qi.loc[(df_qi.parent_type == 'CcLoop') & (df_qi.Position == 1), ['parent_name', 'QuestionLabel']]
-    df_loop_qi.rename(columns={'parent_name': 'old_label'}, inplace=True)
-    # if then question
-    df_if_qi = df_qi.loc[(df_qi.parent_type == 'CcCondition') & (df_qi.Position == 1), ['parent_name', 'QuestionLabel']]
-    # loop then if
-    df_loop_if = df_condition.loc[(df_condition.parent_type == 'CcLoop') & (df_condition.Position == 1), ['parent_name', 'Label']]
-    # if then if
-    df_if_if = df_condition.loc[(df_condition.parent_type == 'CcCondition') & (df_condition.Position == 1), ['parent_name', 'Label']]
-
-    # loop then if then question
-    df_loop_if_qi_m = df_loop_if.merge(df_if_qi, how='left', left_on = 'Label', right_on = 'parent_name')
-    df_loop_if_qi_m.rename(columns={'parent_name_x': 'old_label'}, inplace=True)
-    # one case of loop, if, if, question
-    df_loop_if_qi_mm = df_loop_if_qi_m.merge(df_if_if, how='left', left_on = 'Label', right_on = 'parent_name')
-    df_loop_if_qi_mmm = df_loop_if_qi_mm.merge(df_if_qi, how='left', left_on = 'Label_y', right_on = 'parent_name')
-    df_loop_if_qi_mmm['new_label'] = df_loop_if_qi_mmm.apply(lambda row: row['QuestionLabel_x'].replace('qi_', 'l_q') if not pd.isnull(row['QuestionLabel_x'])  else row['QuestionLabel_y'].replace('qi_', 'l_q'), axis = 1)
-
-    dict_loop_label1 = dict(zip(df_loop_if_qi_mmm['old_label'], df_loop_if_qi_mmm['new_label']))
-
-    df_loop_qi['new_label'] = df_loop_qi['QuestionLabel'].str.replace('qi_', 'l_q')
-    dict_loop_label = dict(zip(df_loop_qi['old_label'], df_loop_qi['new_label']))
-    # join both dict
-    dict_loop_label.update(dict_loop_label1)
-
-    # update loop labels
-    df_qi['parent_name'] = df_qi['parent_name'].map(dict_loop_label).fillna(df_qi['parent_name'])
-    df_condition['parent_name'] = df_condition['parent_name'].map(dict_loop_label).fillna(df_condition['parent_name'])
-    df_loop['parent_name'] = df_loop['parent_name'].map(dict_loop_label).fillna(df_loop['parent_name'])
-    df_loop['Label'] = df_loop['Label'].map(dict_loop_label).fillna(df_loop['Label'])
-
-
 
     # update condition label only if it has no logic text
-    def find_first_q(if_label, df_condition, df_loop, df_qi):
+    def find_first_q(if_label, loop_label, df_condition, df_loop, df_qi):
         #Given condition name, find it's first question name
         question_name = ''
-        loop_label = ''
+
         #i = 1
         while question_name == '':
             #print(i)
@@ -674,6 +643,22 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
             #i = i + 1
         return question_name
 
+    df_loop['first_question'] = df_loop.apply(lambda row: find_first_q('', row['Label'], df_condition, df_loop, df_qi) if row['Loop_While'] == '' else '', axis=1)
+
+    df_loop['new_label'] = df_loop.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else row['Label'] if row['first_question'] == '' else 'l_q' + row['first_question'].split('_')[-1].upper(), axis=1)
+
+    dict_loop_label = dict(zip(df_loop['Label'], df_loop['new_label']))
+    df_loop.drop(['first_question', 'new_label'], axis=1, inplace=True)
+ 
+    df_loop.to_csv('TMP1.csv', sep=';', index=False)
+
+    # update loop labels
+    df_qi['parent_name'] = df_qi['parent_name'].map(dict_loop_label).fillna(df_qi['parent_name'])
+    df_condition['parent_name'] = df_condition['parent_name'].map(dict_loop_label).fillna(df_condition['parent_name'])
+    df_loop['parent_name'] = df_loop['parent_name'].map(dict_loop_label).fillna(df_loop['parent_name'])
+    df_loop['Label'] = df_loop['Label'].map(dict_loop_label).fillna(df_loop['Label'])
+
+
 
     def relabel_if(logic):
 
@@ -701,7 +686,7 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
         k = 'c_q' + k.replace('.','_').split('_')[-1].upper()
         return k
 
-    df_condition['first_question'] = df_condition.apply(lambda row: find_first_q(row['Label'], df_condition, df_loop, df_qi) if row['Logic'] == '' else '', axis=1)
+    df_condition['first_question'] = df_condition.apply(lambda row: find_first_q(row['Label'], '', df_condition, df_loop, df_qi) if row['Logic'] == '' else '', axis=1)
 
     df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else 'c_q' + row['first_question'].split('_')[-1].upper(), axis=1)
 
@@ -710,7 +695,7 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
     df_condition['new_label_roman'] = df_condition['new_label_num'].apply(lambda x: '_'.join([x.rsplit('_',1)[0], int_to_roman(int(x.rsplit('_',1)[1]))]))
     df_condition['new_label_roman'] = df_condition['new_label_roman'].str.replace('_0', '')
 
-    df_condition.to_csv('TMP1.csv', sep=';', index=False)
+
 
     dict_if_label = dict(zip(df_condition['Label'], df_condition['new_label_roman']))
     df_condition.drop(['first_question', 'new_label', 'tmp', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
@@ -733,7 +718,7 @@ def manual_fix(df_sequence):
 
     df_line = pd.DataFrame({'Label': 'Individual Questionnaire', 
                          'parent_type': 'CcSequence',
-                         'parent_name': 'main04',
+                         'parent_name': 'main05',
                          'branch': 1,
                          'Position': None}, 
                         index=[2.5])
@@ -748,8 +733,8 @@ def manual_fix(df_sequence):
 
 def main():
 #if True:
-    input_dir = '../understanding_society/wave4/'
-    xmlFile = os.path.join(input_dir, 'main04.specification.v03.qsrx.xml')
+    input_dir = '../understanding_society/wave5/'
+    xmlFile = os.path.join(input_dir, 'main05.specification.v03.qsrx.xml')
 
     output_dir = os.path.join(input_dir, "archivist_tables")
     if not os.path.exists(output_dir):
