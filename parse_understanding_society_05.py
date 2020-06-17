@@ -457,9 +457,6 @@ def TreeToTables(root, parmap):
                 s = s
         return s
 
-    print(df_qi_name_pos.loc[df_qi_name_pos.Label=='YNEW',:])
-
-
     df_condition['Logic_re'] = df_condition.apply(lambda row: replace_logic_text(row['Logic'], row['Logic_q_names'], row['global_pos'], df_qi_name_pos), axis=1)
 
     df_condition['Logic_new_n'] = df_condition.apply(lambda row: '' if not True in row['exist_q'] else replace_logic_text(row['Logic_re'], row['Logic_q_names'], row['global_pos'], df_qi_name_pos) if all(x==True for x in row['exist_q']) else replace_multiple_str(row['Logic_re'], row['Logic_new']), axis=1)
@@ -577,7 +574,7 @@ def update_codelist(df_codelist, df_qi):
     """
 
     label_dict, codes_dict = get_new_label(df_codelist)
-    print(print("\n".join("{}\t{}".format(k, v) for k, v in label_dict.items())))
+    # print("\n".join("{}\t{}".format(k, v) for k, v in label_dict.items()))
     df_codes_dict = pd.concat(codes_dict, axis=0).reset_index().drop('level_1', 1)
     df_codes_dict.rename(columns={'level_0': 'Label'}, inplace=True)
 
@@ -645,7 +642,7 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
 
     df_loop['first_question'] = df_loop.apply(lambda row: find_first_q('', row['Label'], df_condition, df_loop, df_qi) if row['Loop_While'] == '' else '', axis=1)
 
-    df_loop['new_label'] = df_loop.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else row['Label'] if row['first_question'] == '' else 'l_q' + row['first_question'].split('_')[-1].upper(), axis=1)
+    df_loop['new_label'] = df_loop.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else row['Label'] if row['first_question'] == '' else 'l_q' + row['first_question'].split('_')[-1], axis=1)
 
     dict_loop_label = dict(zip(df_loop['Label'], df_loop['new_label']))
     df_loop.drop(['first_question', 'new_label'], axis=1, inplace=True)
@@ -683,22 +680,21 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
 
             k_all = [k]
 
-        k = 'c_q' + k.replace('.','_').split('_')[-1].upper()
+        k = 'c_q' + k.replace('.','_').split('_')[-1]
         return k
 
     df_condition['first_question'] = df_condition.apply(lambda row: find_first_q(row['Label'], '', df_condition, df_loop, df_qi) if row['Logic'] == '' else '', axis=1)
 
-    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else 'c_q' + row['first_question'].split('_')[-1].upper(), axis=1)
+    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else 'c_q' + row['first_question'].split('_')[-1], axis=1)
 
-    df_condition['tmp'] = df_condition.groupby('new_label').cumcount()
-    df_condition['new_label_num'] = df_condition['new_label'].str.cat(df_condition['tmp'].astype(str), sep="_")
-    df_condition['new_label_roman'] = df_condition['new_label_num'].apply(lambda x: '_'.join([x.rsplit('_',1)[0], int_to_roman(int(x.rsplit('_',1)[1]))]))
-    df_condition['new_label_roman'] = df_condition['new_label_roman'].str.replace('_0', '')
+    df_condition['tmp'] = df_condition.groupby('new_label').cumcount() + 1
+    df_condition['tmp_count'] = df_condition.groupby('new_label')['new_label'].transform('count')
 
-
+    df_condition['new_label_num'] = df_condition.apply(lambda row: row['new_label'] if row['tmp_count'] == 1 else row['new_label'] + '_' + str(row['tmp']), axis=1)
+    df_condition['new_label_roman'] = df_condition.apply(lambda row: '_'.join([row['new_label_num'].rsplit('_',1)[0], int_to_roman(int( row['new_label_num'].rsplit('_',1)[1]))]) if row['tmp_count'] > 1 else row['new_label_num'], axis=1)
 
     dict_if_label = dict(zip(df_condition['Label'], df_condition['new_label_roman']))
-    df_condition.drop(['first_question', 'new_label', 'tmp', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
+    df_condition.drop(['first_question', 'new_label', 'tmp', 'tmp_count', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
  
 
     # update condition labels

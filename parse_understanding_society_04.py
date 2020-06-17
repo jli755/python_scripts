@@ -457,9 +457,6 @@ def TreeToTables(root, parmap):
                 s = s
         return s
 
-    print(df_qi_name_pos.loc[df_qi_name_pos.Label=='YNEW',:])
-
-
     df_condition['Logic_re'] = df_condition.apply(lambda row: replace_logic_text(row['Logic'], row['Logic_q_names'], row['global_pos'], df_qi_name_pos), axis=1)
 
     df_condition['Logic_new_n'] = df_condition.apply(lambda row: '' if not True in row['exist_q'] else replace_logic_text(row['Logic_re'], row['Logic_q_names'], row['global_pos'], df_qi_name_pos) if all(x==True for x in row['exist_q']) else replace_multiple_str(row['Logic_re'], row['Logic_new']), axis=1)
@@ -617,6 +614,11 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
     # join both dict
     dict_loop_label.update(dict_loop_label1)
 
+    for k in dict_loop_label.keys():
+        dict_loop_label[k] = 'l_q' + dict_loop_label[k].split('_')[-1]
+
+    #print("\n".join("{}\t{}".format(k, v) for k, v in dict_loop_label.items()))
+
     # update loop labels
     df_qi['parent_name'] = df_qi['parent_name'].map(dict_loop_label).fillna(df_qi['parent_name'])
     df_condition['parent_name'] = df_condition['parent_name'].map(dict_loop_label).fillna(df_condition['parent_name'])
@@ -683,14 +685,14 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
                 k_all = [item[0] for item in l]
                 k = l[0][0]
             else:
-                all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
+                all_capital_words = [word for word in logic.split(' ') if word[0] ]
                 if all_capital_words == []:
                     k = logic.split(' ')[0]
                 else:
                     k = all_capital_words[0]
                 k_all = [k]
         else:
-            all_capital_words = [word for word in logic.split(' ') if word[0].isupper() ]
+            all_capital_words = [word for word in logic.split(' ') if word[0] ]
             if all_capital_words == []:
                 k = logic.split(' ')[0]
             else:
@@ -698,22 +700,20 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
 
             k_all = [k]
 
-        k = 'c_q' + k.replace('.','_').split('_')[-1].upper()
+        k = 'c_q' + k.replace('.','_').split('_')[-1]
         return k
 
     df_condition['first_question'] = df_condition.apply(lambda row: find_first_q(row['Label'], df_condition, df_loop, df_qi) if row['Logic'] == '' else '', axis=1)
 
-    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else 'c_q' + row['first_question'].split('_')[-1].upper(), axis=1)
+    df_condition['new_label'] = df_condition.apply(lambda row: row['Label'] if row['first_question'] == 'unknown' else relabel_if(row['Logic']) if row['first_question'] == '' else 'c_q' + row['first_question'].split('_')[-1], axis=1)
 
-    df_condition['tmp'] = df_condition.groupby('new_label').cumcount()
-    df_condition['new_label_num'] = df_condition['new_label'].str.cat(df_condition['tmp'].astype(str), sep="_")
-    df_condition['new_label_roman'] = df_condition['new_label_num'].apply(lambda x: '_'.join([x.rsplit('_',1)[0], int_to_roman(int(x.rsplit('_',1)[1]))]))
-    df_condition['new_label_roman'] = df_condition['new_label_roman'].str.replace('_0', '')
-
-    df_condition.to_csv('TMP1.csv', sep=';', index=False)
+    df_condition['tmp'] = df_condition.groupby('new_label').cumcount() + 1
+    df_condition['tmp_count'] = df_condition.groupby('new_label')['new_label'].transform('count')
+    df_condition['new_label_num'] = df_condition.apply(lambda row: row['new_label'] if row['tmp_count'] == 1 else row['new_label'] + '_' + str(row['tmp']), axis=1)
+    df_condition['new_label_roman'] = df_condition.apply(lambda row: '_'.join([row['new_label_num'].rsplit('_',1)[0], int_to_roman(int( row['new_label_num'].rsplit('_',1)[1]))]) if row['tmp_count'] > 1 else row['new_label_num'], axis=1)
 
     dict_if_label = dict(zip(df_condition['Label'], df_condition['new_label_roman']))
-    df_condition.drop(['first_question', 'new_label', 'tmp', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
+    df_condition.drop(['first_question', 'new_label', 'tmp', 'tmp_count', 'new_label_num', 'new_label_roman'], axis=1, inplace=True)
  
 
     # update condition labels
@@ -721,7 +721,6 @@ def update_loop_condition_label(df_qi, df_condition, df_loop):
     df_condition['parent_name'] = df_condition['parent_name'].map(dict_if_label).fillna(df_condition['parent_name'])
     df_loop['parent_name'] = df_loop['parent_name'].map(dict_if_label).fillna(df_loop['parent_name'])
     df_condition['Label'] = df_condition['Label'].map(dict_if_label).fillna(df_condition['Label'])
-
 
     return df_qi, df_condition, df_loop
 
@@ -776,6 +775,9 @@ def main():
 
     # manual fix the sequence layout
     df_sequence = manual_fix(df_sequence)
+
+    # check 
+    df_condition['Literal'] = df_condition['Literal'].apply(lambda x: 'CHECK' if x=='' else x)
 
     df_qi.to_csv(os.path.join(output_dir, 'question_items.csv'), encoding='utf-8', sep=';', index=False)
     df_response.to_csv(os.path.join(output_dir, 'response.csv'), encoding='utf-8', sep=';', index=False)
