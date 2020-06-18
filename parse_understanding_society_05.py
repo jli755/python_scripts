@@ -722,7 +722,7 @@ def manual_fix(df_sequence):
     df = df_sequence.append(df_line, ignore_index=False)
     df = df.sort_index().reset_index(drop=True)
 
-    df['parent_name'] = df['Label'].apply(lambda x: 'Individual Questionnaire' if x not in ('Household Grid module', 'Grid Variables module', 'Household Questionnaire', 'Individual Intro module', 'Proxy Questionnaire', 'Individual Questionnaire') else 'main04')
+    df['parent_name'] = df['Label'].apply(lambda x: 'Individual Questionnaire' if x not in ('Household Grid module', 'Grid Variables module', 'Household Questionnaire', 'Individual Intro module', 'Proxy Questionnaire', 'Individual Questionnaire') else 'main05')
     df['Position'] = df.groupby(['parent_name']).cumcount() + 1
     return df
 
@@ -757,6 +757,9 @@ def main():
 
     # manual fix the sequence layout
     df_sequence = manual_fix(df_sequence)
+
+    # literal cannot be empty 
+    df_condition['Literal'] = df_condition['Literal'].apply(lambda x: 'CHECK' if x=='' else x)
 
     df_qi.to_csv(os.path.join(output_dir, 'question_items.csv'), encoding='utf-8', sep=';', index=False)
     df_response.to_csv(os.path.join(output_dir, 'response.csv'), encoding='utf-8', sep=';', index=False)
