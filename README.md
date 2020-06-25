@@ -1,3 +1,4 @@
+
 ## October 2019
 
 ### Week 1 (Oct 1 - Oct 4)
@@ -76,4 +77,5 @@
 1. [x] Generation Scotland COVID19 Study
     1. [Wave 1](https://wiki.ucl.ac.uk/display/CTTEAM/Generation+Scotland+COVID19+Study)
 
-2. [] [Understanding Society](https://www.understandingsociety.ac.uk/documentation/mainstage/questionnaires)
+2. [x] [Understanding Society](https://www.understandingsociety.ac.uk/documentation/mainstage/questionnaires)
+    1. [wiki page](https://wiki.ucl.ac.uk/display/CTTEAM/Understanding+Society+xml)
