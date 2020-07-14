@@ -79,3 +79,8 @@
 
 2. [x] [Understanding Society](https://www.understandingsociety.ac.uk/documentation/mainstage/questionnaires)
     1. [wiki page](https://wiki.ucl.ac.uk/display/CTTEAM/Understanding+Society+xml)
+
+## July 2020
+
+1. [x] Export txt files from archivist
+    1. [export_archivist_txt.py](https://github.com/jli755/python_scripts/blob/master/export_archivist_txt.py)
