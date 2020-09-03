@@ -770,8 +770,8 @@ def get_ordered_tables(root):
 
 
 def main():
-    main_dir = '../Jenny_ucl/us_covid19_xml/2020_06'
-    input_name = 'UKHLSCovidJun20_v01_20200804.xml'
+    main_dir = '../Jenny_ucl/us_covid19_xml/2020_07'
+    input_name = 'UKHLSCovidJul20_v01.xml'
     xmlFile = os.path.join(main_dir, input_name)
 
     output_dir_name = input_name.split('_')[0]

@@ -84,3 +84,14 @@
 
 1. [x] Export txt files from archivist
     1. [export_archivist_txt.py](https://github.com/jli755/python_scripts/blob/master/export_archivist_txt.py)
+
+## August 2020
+
+1. [x] Gitlab work flow
+    1. [Insert tables to archivist database](https://gitlab.com/jli755/archivist_insert)
+    2. [Export xml/text files from archivist](https://gitlab.com/jli755/archivist_export)
+
+2. [x] Understanding Society Covid-19 study
+    1. [Questionnaires](https://www.understandingsociety.ac.uk/documentation/covid-19/questionnaires)
+    2. [parse_us_covid_xml.py](https://github.com/jli755/python_scripts/blob/master/parse_us_covid_xml.py
+
