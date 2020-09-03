@@ -6,6 +6,7 @@
     Parse us covid19 xml file
 """
 
+import re
 import os
 import pandas as pd
 import xml.etree.ElementTree as ET
@@ -153,6 +154,9 @@ def parse_codelist(root):
     input: root of ET xml
     output: dataframe of codelist
     """
+
+    #TODO: codelist -1 Don't know not in pdf, remove
+
     category_dict = parse_category(root)
 
     columns = ['ID', 'Name', 'Code_Value', 'Value', 'Category']
@@ -167,11 +171,13 @@ def parse_codelist(root):
         codes = codelist.findall('logicalproduct:Code', ns)
         for code in codes:
             code_value = code.find('r:Value', ns).text
-            category_ID = code.find('r:CategoryReference/r:ID', ns).text
-            category_Label = category_dict[category_ID]
+            # code_value < 0 not
+            if code_value[0] != '-':
+                category_ID = code.find('r:CategoryReference/r:ID', ns).text
+                category_Label = category_dict[category_ID]
 
-            row = [ID, CodeListName, Label, code_value, category_Label]
-            codelist_df.loc[len(codelist_df)] = row
+                row = [ID, CodeListName, Label, code_value, category_Label]
+                codelist_df.loc[len(codelist_df)] = row
 
     return codelist_df
 
@@ -296,6 +302,8 @@ def parse_QuestionItem(root):
     input: root of ET xml
     output: dataframe of QuestionItem
     """
+
+    #TODO: if question has no literal, is this a real question?
 
     df_r, dup_label_list = parse_response(root)
     codelist_df = parse_codelist(root)
@@ -445,26 +453,46 @@ def parse_QuestionItem(root):
 def parse_QuestionGrid(root):
     """ 
     input: root of ET xml
-    output: dataframe of QuestionItem
+    output: there is only one questiongrid in this study, will conver it to question item
     """
     
-    df_r, dup_label_list = parse_response(root)
-    codelist_df = parse_codelist(root)
+    columns = ['QI_ID', 'Label', 'Literal', 'Instructions', 'Response', 'min_responses', 'max_responses']
 
-    columns = ['QG_ID', 'Label', 'Literal', 'Instructions', 'Horizontal_Codelist_Name', 'Vertical_Codelist_Name', 'Response_domain', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'Horizontal_min_responses', 'Horizontal_max_responses', 'Vertical_min_responses', 'Vertical_max_responses']
     qg_df = pd.DataFrame(columns=columns)
 
-    QuestionGrids = root.findall('.//datacollection:QuestionGridName', ns) 
+    l_id = []
+    l_name = []
+    qg_dict = dict()
+    QuestionGrids = root.findall('.//datacollection:QuestionGrid', ns) 
     for QuestionGrid in QuestionGrids:
         ID = QuestionGrid.find('r:ID', ns).text
-        Name = QuestionGrid.find('datacollection:QuestionItemName/r:String', ns).text
+        Name = QuestionGrid.find('datacollection:QuestionGridName/r:String', ns).text
         
         if QuestionGrid.find('datacollection:QuestionText', ns) == None: 
             Literal = None
         else:
             Literal = QuestionGrid.find('datacollection:QuestionText/datacollection:LiteralText/datacollection:Text', ns).text
 
-        # TODO: grid of numerical response???  not codelist ...
+        # Numeric Domain
+        NumericDomains = QuestionGrid.findall('.//datacollection:NumericDomain', ns)
+        k = 1
+        for NumericDomain in NumericDomains:
+            if NumericDomain.find('r:Label', ns) == None:
+                Label = 'Generic number'
+            else:
+                Label = NumericDomain.find('r:Label/r:Content', ns).text
+
+            new_id = ID + '_' + str(k)
+            new_name = Name + Label.split(' ')[0]
+            qg_row = [new_id, 'qi_' + new_name, Literal, None, Label, 1, 1 ]
+            qg_df.loc[len(qg_df)] = qg_row
+            l_id.append(new_id)
+            l_name.append(new_name)
+            k = k + 1
+    qg_dict[ID] = ','.join(l_id)
+    qg_dict[Name] = ','.join(l_name)
+
+    return qg_df, qg_dict
 
 
 def parse_IfThenElse(root):
@@ -482,7 +510,18 @@ def parse_IfThenElse(root):
         Name = Name.lower().replace('condition', '')
         Label = IfThenElse.find('r:Label/r:Content', ns).text
         IfCondition = IfThenElse.find('datacollection:IfCondition/r:Command/r:CommandContent', ns).text
-        IfCondition = IfCondition.replace('=', " == ").replace('<>', ' != ').replace(' | ', ' || ').replace(' OR ', ' || ').replace(' or ', ' || ').replace(' & ', ' && ').replace(' AND ', ' && ').replace(' and ', ' && ').replace('IF ', '')
+        if 'ff_' in IfCondition:
+            IfCondition = None
+        else:
+            IfCondition = IfCondition.replace('=', " == ").replace('<>', ' != ').replace(' | ', ' || ').replace(' OR ', ' || ').replace(' or ', ' || ').replace(' & ', ' && ').replace(' AND ', ' && ').replace(' and ', ' && ').replace('IF', '')
+            IfCondition = IfCondition.strip()
+            Logic_parts = re.findall('(\w+)\s*==\s*|(\w+)\s*>\s*|(\w+)\s*<\s*|(\w+)\s*!=\s*', IfCondition)
+            Logic_variables = list(set(j for i in Logic_parts for j in i if j!=''))
+
+            # replace with qc_
+            for item in Logic_variables: 
+                if item in IfCondition: 
+                    IfCondition = IfCondition.replace(item, 'qc_' + item)
 
         for reference in IfThenElse.findall('datacollection:ThenConstructReference', ns):
             Then_ID = reference.find('r:ID', ns).text
@@ -522,6 +561,9 @@ def parse_Loop(root):
         Label = Loop.find('r:Label/r:Content', ns).text
         LoopWhile = Loop.find('datacollection:LoopWhile/r:Command/r:CommandContent', ns).text
 
+        # label should be associated with the variable.
+        # in case of missing variable, using the first question name
+        # this should be modified after find out the first question
         if Loop.find('datacollection:ConstructName', ns) == None:
             Name = LoopWhile.replace('.', '').split(' ')[-1]
         else:
@@ -558,8 +600,6 @@ def parse_Sequence(root):
     output: sequence element 
     """
 
-    #TODO: check QuestionGrid is part of QC?
-
     df_QC = parse_QuestionConstruct(root)
     df_statement = parse_StatementItem(root)
     df_if = parse_IfThenElse(root)
@@ -580,6 +620,16 @@ def parse_Sequence(root):
             df_seq.loc[len(df_seq)] = seq_row
             
     df_seq_qc = df_seq.merge(df_QC, left_on='CCRef_ID', right_on='QC_ID', how='left')
+
+    # modify sequence table question grid to question item
+    df_QG, qg_dict = parse_QuestionGrid(root)
+
+    df_seq_qc['QC_Name_new'] = df_seq_qc['QC_Name'].apply(lambda x: qg_dict[x] if x in qg_dict.keys() else x)
+    df_seq_qc['QuestionReference_id_new'] = df_seq_qc['QuestionReference_id'].apply(lambda x: qg_dict[x] if x in qg_dict.keys() else x)
+    df_seq_qc = df_seq_qc.drop(['QC_Name', 'QuestionReference_id'], 1)
+    df_seq_qc.rename(columns={'QC_Name_new': 'QC_Name', 'QuestionReference_id_new': 'QuestionReference_id'}, inplace=True)
+    # split rows
+    df_seq_qc = df_seq_qc.set_index(['ID', 'Label', 'CCRef_ID', 'CCRef_type', 'QC_ID', 'QuestionReference_type']).apply(lambda x: x.str.split(',').explode()).reset_index()
 
     return df_seq_qc
 
@@ -699,8 +749,22 @@ def get_ordered_tables(root):
 
     QI_columns = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses']
     df_QI_p = parse_QuestionItem(root)
-    df_QI = df_QI_p.merge(df_pos, left_on = 'QI_ID', right_on='new_ID', how='left')
+    df_QG_p, qg_dict = parse_QuestionGrid(root)
+    df_QI_all =pd.concat([df_QI_p, df_QG_p])
+
+    # Removed DERIVED questions
+    df_QI_remove = df_QI_all.loc[(df_QI_all['Literal'].isnull() & (df_QI_all['Label'].str.endswith('st') | df_QI_all['Label'].str.endswith('end')) ), :]
+    df_QI_keep = df_QI_all.append(df_QI_remove).drop_duplicates(keep=False)
+
+    # split instrutions with the format *please .. *
+    df_QI_keep['Instructions'] = df_QI_keep['Literal'].apply(lambda x: re.findall('\*Please.*?\*', x)[0] if not pd.isnull(x) and len(re.findall('\*Please.*?\*', x)) > 0  else None)
+    df_QI_keep['Literal'] = df_QI_keep.apply(lambda row: row['Literal'] if pd.isnull(row['Instructions']) else row['Literal'].replace(row['Instructions'], ''), axis = 1)
+    df_QI_keep['Instructions'] = df_QI_keep['Instructions'].str.replace('*', '')
+
+    df_QI = df_QI_keep.merge(df_pos, left_on = 'QI_ID', right_on='new_ID', how='left')
     df_QI = df_QI[QI_columns]
+
+    
 
     return df_statement, df_if, df_loop, df_QI
 
@@ -739,7 +803,6 @@ def main():
     df_if.to_csv(os.path.join(output_dir, 'condition.csv'), index=False, sep=';')
     df_loop.to_csv(os.path.join(output_dir, 'loop.csv'), index=False, sep=';')
     df_QI.to_csv(os.path.join(output_dir, 'question_item.csv'), index=False, sep=';')
-
 
 
 if __name__ == "__main__":
