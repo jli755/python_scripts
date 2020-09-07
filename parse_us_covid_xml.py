@@ -155,8 +155,6 @@ def parse_codelist(root):
     output: dataframe of codelist
     """
 
-    #TODO: codelist -1 Don't know not in pdf, remove
-
     category_dict = parse_category(root)
 
     columns = ['ID', 'Name', 'Code_Value', 'Value', 'Category']
@@ -171,7 +169,7 @@ def parse_codelist(root):
         codes = codelist.findall('logicalproduct:Code', ns)
         for code in codes:
             code_value = code.find('r:Value', ns).text
-            # code_value < 0 not
+            # remove those not in pdf
             if code_value[0] != '-':
                 category_ID = code.find('r:CategoryReference/r:ID', ns).text
                 category_Label = category_dict[category_ID]
@@ -212,6 +210,9 @@ def parse_response(root):
         else:
             maxLength = None
 
+        if Label == 'Generic text' and minLength == None and maxLength == None:
+            Label = 'Long text'
+
         text_row = [Label, 'Text', None, None, minLength, maxLength]
         response_df.loc[len(response_df)] = text_row
 
@@ -239,6 +240,9 @@ def parse_response(root):
             high_value = None
         else:
             high_value = NumericDomain.find('r:NumberRange/r:High', ns).text
+
+        if Label == 'Generic number' and high_value == None:
+            Label = 'Long number'
 
         numeric_row = [Label, 'Numeric', NumericType, None, low_value, high_value]
         response_df.loc[len(response_df)] = numeric_row
@@ -343,6 +347,19 @@ def parse_QuestionItem(root):
             else:
                 Label = TextDomain.find('r:Label/r:Content', ns).text
 
+            if 'minLength' in TextDomain.attrib.keys():
+                minLength = TextDomain.attrib['minLength']
+            else:
+                minLength = None
+
+            if 'maxLength' in TextDomain.attrib.keys():
+                maxLength = TextDomain.attrib['maxLength']
+            else:
+                maxLength = None
+
+            if Label == 'Generic text' and minLength == None and maxLength == None:
+                Label = 'Long text'
+
             # which dup label to use
             if Label in dup_label_list:
                 if 'minLength' in TextDomain.attrib.keys():
@@ -373,6 +390,14 @@ def parse_QuestionItem(root):
                 Label = 'Generic number'
             else:
                 Label = NumericDomain.find('r:Label/r:Content', ns).text
+
+            if NumericDomain.find('r:NumberRange/r:High', ns) == None:
+                high_value = None
+            else:
+                high_value = NumericDomain.find('r:NumberRange/r:High', ns).text
+
+            if Label == 'Generic number' and high_value == None:
+                Label = 'Long number'
 
             # find correct label
             if Label in dup_label_list:
@@ -429,7 +454,7 @@ def parse_QuestionItem(root):
                 DateType = DateTimeDomain.find('r:DateTypeCode', ns).text
 
             if Format == None and DateType == None:
-                df_sub = df_r.loc[(df_r.Label.str.startswith(Label)) & (df_r.Type2.isna()) &(df_r.Format.isna()) ,:]
+                df_sub = df_r.loc[(df_r.Label.str.startswith(Label)) & (df_r.TypCodeDomaine2.isna()) &(df_r.Format.isna()) ,:]
             elif Format != None and DateType == None:
                 df_sub = df_r.loc[(df_r.Label.str.startswith(Label)) & (df_r.Type2.isna()) &(df_r.Format == Format) ,:]
             elif Format == None and DateType != None:
@@ -442,6 +467,10 @@ def parse_QuestionItem(root):
         elif CodeDomain != None:
             CodeID = CodeDomain.find('r:CodeListReference/r:ID', ns).text
             Response = 'cs_' + codelist_df.loc[(codelist_df.ID == CodeID)]['Name'].unique().tolist()[0]
+            if CodeDomain.find('r:Label/r:Content', ns) != None:
+                CodeLabel = CodeDomain.find('r:Label/r:Content', ns).text
+                if Literal == None:
+                    Literal = CodeLabel
         else:
             Response = 'Temp'
  
@@ -692,7 +721,7 @@ def get_position(root):
     df_Sequence = parse_Sequence(root)
     df_IfThenElse = parse_IfThenElse(root)
     df_Loop = parse_Loop(root)
-    df_instrument = parse_Instrument(root)
+    df_instrument = parse_Instrument(root) 
 
     # position from parsed loops
     df_loop_seq = df_Loop.merge(df_Sequence, left_on='ref_ID', right_on='ID', how='left')
@@ -707,8 +736,8 @@ def get_position(root):
     df_if_seq['Position'] = df_if_seq.groupby(['IF_ID']).cumcount() + 1
     df_if_seq['new_ID'] = df_if_seq.apply(lambda row: row['CCRef_ID'] if pd.isnull(row['QuestionReference_id']) else row['QuestionReference_id'], axis=1)
     df_if_seq['Parent_Type'] = 'CcCondition'
-    df_if_pos = df_if_seq.loc[:, ['new_ID', 'Parent_Type', 'IF_ID', 'IF_Name', 'Position']]
-    df_if_pos.rename(columns={'IF_ID': 'Parent_ID', 'IF_Name': 'Parent_Name'}, inplace=True)
+    df_if_pos = df_if_seq.loc[:, ['new_ID', 'Parent_Type', 'IF_ID', 'IF_Label', 'Position']]
+    df_if_pos.rename(columns={'IF_ID': 'Parent_ID', 'IF_Label': 'Parent_Name'}, inplace=True)
 
     # position from parsed instrument
     df_inst_seq = df_instrument.merge(df_Sequence, left_on='ref_ID', right_on='ID', how='left')
@@ -720,6 +749,7 @@ def get_position(root):
 
     df = pd.concat([df_loop_pos, df_if_pos, df_inst_pos])
     df['Branch'] = df['Parent_Type'].apply(lambda x: 0 if x == 'CcCondition' else 1)
+
     return df
    
 
@@ -753,7 +783,7 @@ def get_ordered_tables(root):
     df_QI_all =pd.concat([df_QI_p, df_QG_p])
 
     # Removed DERIVED questions
-    df_QI_remove = df_QI_all.loc[(df_QI_all['Literal'].isnull() & (df_QI_all['Label'].str.endswith('st') | df_QI_all['Label'].str.endswith('end')) ), :]
+    df_QI_remove = df_QI_all.loc[df_QI_all['Literal'].isnull(), :]
     df_QI_keep = df_QI_all.append(df_QI_remove).drop_duplicates(keep=False)
 
     # split instrutions with the format *please .. *
@@ -764,14 +794,26 @@ def get_ordered_tables(root):
     df_QI = df_QI_keep.merge(df_pos, left_on = 'QI_ID', right_on='new_ID', how='left')
     df_QI = df_QI[QI_columns]
 
-    
+    return df_statement, df_if, df_loop, df_QI
 
+def modify_loop_label(root):
+    """
+        Loop has no variable, using the first question name for it's label
+    """
+    df_statement, df_if, df_loop, df_QI = get_ordered_tables(root)
+    df_QI_sub = df_QI.loc[(df_QI['Parent_Type'] == 'CcLoop') & (df_QI['Position'] == 1), ['Label', 'Parent_Name']]
+    df_QI_sub['new_Parent_Name'] = 'l_' + df_QI['Label'].str.replace('qi', 'qc')
+    new_loop_dict = dict(zip(df_QI_sub.Parent_Name, df_QI_sub.new_Parent_Name)) 
+    
+    df_loop['Label'] = df_loop['Label'].apply(lambda x: new_loop_dict[x] if x in new_loop_dict.keys() else x)
+    df_QI['Parent_Name'] = df_QI['Parent_Name'].apply(lambda x: new_loop_dict[x] if x in new_loop_dict.keys() else x)
+    
     return df_statement, df_if, df_loop, df_QI
 
 
 def main():
-    main_dir = '../Jenny_ucl/us_covid19_xml/2020_07'
-    input_name = 'UKHLSCovidJul20_v01.xml'
+    main_dir = '../Jenny_ucl/us_covid19_xml/2020_06'
+    input_name = 'UKHLSCovidJun20_v01_20200804.xml'
     xmlFile = os.path.join(main_dir, input_name)
 
     output_dir_name = input_name.split('_')[0]
@@ -798,7 +840,7 @@ def main():
     df_codelist = get_codelist_table(root)
     df_codelist.to_csv(os.path.join(output_dir, 'codelist.csv'), index=False, sep=';')
 
-    df_statement, df_if, df_loop, df_QI = get_ordered_tables(root)
+    df_statement, df_if, df_loop, df_QI = modify_loop_label(root)
     df_statement.to_csv(os.path.join(output_dir, 'statement.csv'), index=False, sep=';')
     df_if.to_csv(os.path.join(output_dir, 'condition.csv'), index=False, sep=';')
     df_loop.to_csv(os.path.join(output_dir, 'loop.csv'), index=False, sep=';')
