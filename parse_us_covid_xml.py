@@ -529,20 +529,21 @@ def parse_IfThenElse(root):
     input: root of ET xml
     output: dataframe of Conditions
     """
-    columns = ['IF_ID', 'IF_Name', 'Literal', 'IfCondition', 'Then_ID', 'Then_type']
+    columns = ['IF_ID', 'IF_Label', 'IF_Label_logic', 'Literal', 'IfCondition', 'Then_ID', 'Then_type']
     df_IfThenElse = pd.DataFrame(columns=columns)
 
     IfThenElses = root.findall('.//datacollection:IfThenElse', ns) 
+    Name1  = None
     for IfThenElse in IfThenElses:
         ID = IfThenElse.find('r:ID', ns).text
         Name = IfThenElse.find('datacollection:ConstructName/r:String', ns).text
-        Name = Name.lower().replace('condition', '')
+        Name = 'c_q' + Name.lower().replace('condition', '')
         Label = IfThenElse.find('r:Label/r:Content', ns).text
         IfCondition = IfThenElse.find('datacollection:IfCondition/r:Command/r:CommandContent', ns).text
         if 'ff_' in IfCondition:
             IfCondition = None
         else:
-            IfCondition = IfCondition.replace('=', " == ").replace('<>', ' != ').replace(' | ', ' || ').replace(' OR ', ' || ').replace(' or ', ' || ').replace(' & ', ' && ').replace(' AND ', ' && ').replace(' and ', ' && ').replace('IF', '')
+            IfCondition = IfCondition.replace('=', "==").replace('<>', '!=').replace(' | ', ' || ').replace(' OR ', ' || ').replace(' or ', ' || ').replace(' & ', ' && ').replace(' AND ', ' && ').replace(' and ', ' && ').replace('IF', '')
             IfCondition = IfCondition.strip()
             Logic_parts = re.findall('(\w+)\s*==\s*|(\w+)\s*>\s*|(\w+)\s*<\s*|(\w+)\s*!=\s*', IfCondition)
             Logic_variables = list(set(j for i in Logic_parts for j in i if j!=''))
@@ -552,25 +553,16 @@ def parse_IfThenElse(root):
                 if item in IfCondition: 
                     IfCondition = IfCondition.replace(item, 'qc_' + item)
 
+            # using first logic variable as label
+            if len(Logic_variables) > 0:
+                Name1 = 'c_q' + Logic_variables[0]
+
         for reference in IfThenElse.findall('datacollection:ThenConstructReference', ns):
             Then_ID = reference.find('r:ID', ns).text
             Then_type = reference.find('r:TypeOfObject', ns).text
 
-            if_row = [ID, 'c_q' + Name, Label, IfCondition, Then_ID, Then_type]
+            if_row = [ID, Name, Name1, Label, IfCondition, Then_ID, Then_type]
             df_IfThenElse.loc[len(df_IfThenElse)] = if_row
-
-    # if name is not unique
-    if not df_IfThenElse['IF_Name'].is_unique:
-
-        df_IfThenElse['tmp'] = df_IfThenElse.groupby('IF_Name').cumcount() + 1
-        df_IfThenElse['tmp_count'] = df_IfThenElse.groupby('IF_Name')['IF_Name'].transform('count')
-
-        df_IfThenElse['new_label_num'] = df_IfThenElse.apply(lambda row: row['IF_Name'] if row['tmp_count'] == 1 else row['IF_Name'] + '_' + str(row['tmp']), axis=1)
-        df_IfThenElse['new_label_roman'] = df_IfThenElse.apply(lambda row: '_'.join([row['new_label_num'].rsplit('_',1)[0], int_to_roman(int( row['new_label_num'].rsplit('_',1)[1]))]) if row['tmp_count'] > 1 else row['new_label_num'], axis=1)
-
-        df_IfThenElse['IF_Label'] = df_IfThenElse['new_label_roman']
-    else:
-        df_IfThenElse['IF_Label'] = df_IfThenElse['IF_Name']
 
     return df_IfThenElse
  
@@ -762,10 +754,11 @@ def get_ordered_tables(root):
     df_statement.rename(columns={'Statement_Name': 'Label'}, inplace=True)
     df_statement = df_statement[statement_columns]
 
-    if_columns = ['Label', 'Literal', 'Logic', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    if_columns = ['Label', 'Label_logic', 'Literal', 'Logic', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
     df_IfThenElse = parse_IfThenElse(root)
     df_if = df_IfThenElse.merge(df_pos, left_on = 'IF_ID', right_on='new_ID', how='left')
-    df_if.rename(columns={'IF_Label': 'Label', 'IfCondition': 'Logic'}, inplace=True)
+    df_if.rename(columns={'IF_Label': 'Label', 'IF_Label_logic': 'Label_logic', 'IfCondition': 'Logic'}, inplace=True)
+    df_IfThenElse = parse_IfThenElse(root)
     df_if = df_if[if_columns]
 
     loop_columns = ['Label', 'Loop_While', 'Start_value', 'End_Value', 'Variable', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
@@ -796,18 +789,67 @@ def get_ordered_tables(root):
 
     return df_statement, df_if, df_loop, df_QI
 
-def modify_loop_label(root):
+
+def modify_label(root):
     """
-        Loop has no variable, using the first question name for it's label
+        - conditon labels should be labelled after the question in the condition logic. 
+          - If there isn't logic then it should be labelled after the first question inside the condition.
+        - Loop has no variable, using the first question name for it's label
     """
+
     df_statement, df_if, df_loop, df_QI = get_ordered_tables(root)
+
+    # first question in loop
     df_QI_sub = df_QI.loc[(df_QI['Parent_Type'] == 'CcLoop') & (df_QI['Position'] == 1), ['Label', 'Parent_Name']]
-    df_QI_sub['new_Parent_Name'] = 'l_' + df_QI['Label'].str.replace('qi', 'qc')
+    df_QI_sub['new_Parent_Name'] = 'l_' + df_QI['Label'].str.replace('qi_', '')
     new_loop_dict = dict(zip(df_QI_sub.Parent_Name, df_QI_sub.new_Parent_Name)) 
     
     df_loop['Label'] = df_loop['Label'].apply(lambda x: new_loop_dict[x] if x in new_loop_dict.keys() else x)
     df_QI['Parent_Name'] = df_QI['Parent_Name'].apply(lambda x: new_loop_dict[x] if x in new_loop_dict.keys() else x)
+
+    # first question in condition
+    df_QI_c = df_QI.loc[(df_QI['Parent_Type'] == 'CcCondition') & (df_QI['Position'] == 1), ['Label', 'Parent_Name']]
+    df_QI_c['new_Parent_Name'] = df_QI['Label'].str.replace('qi_', '')
+    new_cond_dict = dict(zip(df_QI_c.Parent_Name, df_QI_c.new_Parent_Name)) 
+
+    # only keep those without logic variable
+    cond_label_dict = dict()
+    for k in new_cond_dict.keys():
+        v = 'c_q' + new_cond_dict[k]
+        if df_if.loc[(df_if['Label'] == k) , 'Logic'].values[0] is None:
+            cond_label_dict[k] = v
+        elif 'qc_' not in df_if.loc[(df_if['Label'] == k) , 'Logic'].values[0]:
+            cond_label_dict[k] = v
+        else:
+            cond_label_dict[k] = 'c_q' + df_if.loc[(df_if['Label'] == k) , 'Label_logic'].values[0]
+
+    df_if['IF_Name'] = df_if.apply(lambda row: row['Label_logic'] if not pd.isnull(row['Label_logic']) else cond_label_dict[row['Label_logic']] if row['Label_logic'] in cond_label_dict.keys() else row['Label'], axis=1)
+
+    # if name is not unique
+    if not df_if['IF_Name'].is_unique:
+
+        df_if['tmp'] = df_if.groupby('IF_Name').cumcount() + 1
+        df_if['tmp_count'] = df_if.groupby('IF_Name')['IF_Name'].transform('count')
+
+        df_if['new_label_num'] = df_if.apply(lambda row: row['IF_Name'] if row['tmp_count'] == 1 else row['IF_Name'] + '_' + str(row['tmp']), axis=1)
+        df_if['new_label_roman'] = df_if.apply(lambda row: '_'.join([row['new_label_num'].rsplit('_',1)[0], int_to_roman(int( row['new_label_num'].rsplit('_',1)[1]))]) if row['tmp_count'] > 1 else row['new_label_num'], axis=1)
+
+        df_if['Label_new'] = df_if['new_label_roman']
+    else:
+        df_if['Label_new'] = df_if['IF_Name']
+
+    if_dict = dict(zip(df_if.Label, df_if.Label_new)) 
     
+    df_QI['Parent_Name'] = df_QI['Parent_Name'].apply(lambda x: if_dict[x] if x in if_dict.keys() else x)
+    df_statement['Parent_Name'] = df_statement['Parent_Name'].apply(lambda x: if_dict[x] if x in if_dict.keys() else x)
+    df_loop['Parent_Name'] = df_loop['Parent_Name'].apply(lambda x: if_dict[x] if x in if_dict.keys() else x)
+
+    df_if = df_if.drop(['Label', 'Label_logic'], 1)
+    df_if.rename(columns={'Label_new': 'Label'}, inplace=True)
+
+    if_columns = ['Label', 'Literal', 'Logic', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_if = df_if[if_columns]
+
     return df_statement, df_if, df_loop, df_QI
 
 
@@ -840,7 +882,7 @@ def main():
     df_codelist = get_codelist_table(root)
     df_codelist.to_csv(os.path.join(output_dir, 'codelist.csv'), index=False, sep=';')
 
-    df_statement, df_if, df_loop, df_QI = modify_loop_label(root)
+    df_statement, df_if, df_loop, df_QI = modify_label(root)
     df_statement.to_csv(os.path.join(output_dir, 'statement.csv'), index=False, sep=';')
     df_if.to_csv(os.path.join(output_dir, 'condition.csv'), index=False, sep=';')
     df_loop.to_csv(os.path.join(output_dir, 'loop.csv'), index=False, sep=';')
