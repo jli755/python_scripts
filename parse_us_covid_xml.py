@@ -126,7 +126,7 @@ def parse_StatementItem(root):
         Label = StatementItem.find('r:Label/r:Content', ns).text
         Literal = StatementItem.find('datacollection:DisplayText/datacollection:LiteralText/datacollection:Text', ns).text
             
-        statement_row = [ID, 's_q' + Name, Label, Literal]
+        statement_row = [ID, 's_q' + Name, Label, Literal.replace('\n', '')]
         df_StatementItem.loc[len(df_StatementItem)] = statement_row
 
     return df_StatementItem
@@ -323,7 +323,7 @@ def parse_QuestionItem(root):
         if QuestionItem.find('datacollection:QuestionText', ns) == None: 
             Literal = None
         else:
-            Literal = QuestionItem.find('datacollection:QuestionText/datacollection:LiteralText/datacollection:Text', ns).text
+            Literal = QuestionItem.find('datacollection:QuestionText/datacollection:LiteralText/datacollection:Text', ns).text.replace('\n', '').replace('*', '')
 
         # TODO: 1st instruction only?
         Instructions = None
@@ -513,7 +513,7 @@ def parse_QuestionGrid(root):
 
             new_id = ID + '_' + str(k)
             new_name = Name + Label.split(' ')[0]
-            qg_row = [new_id, 'qi_' + new_name, Literal, None, Label, 1, 1 ]
+            qg_row = [new_id, 'qi_' + new_name, Literal.replace('\n', ''), None, Label, 1, 1 ]
             qg_df.loc[len(qg_df)] = qg_row
             l_id.append(new_id)
             l_name.append(new_name)
@@ -561,7 +561,7 @@ def parse_IfThenElse(root):
             Then_ID = reference.find('r:ID', ns).text
             Then_type = reference.find('r:TypeOfObject', ns).text
 
-            if_row = [ID, Name, Name1, Label, IfCondition, Then_ID, Then_type]
+            if_row = [ID, Name, Name1, Label.replace('\n', ''), IfCondition, Then_ID, Then_type]
             df_IfThenElse.loc[len(df_IfThenElse)] = if_row
 
     return df_IfThenElse
@@ -653,7 +653,6 @@ def parse_Sequence(root):
     df_seq_qc = df_seq_qc.set_index(['ID', 'Label', 'CCRef_ID', 'CCRef_type', 'QC_ID', 'QuestionReference_type']).apply(lambda x: x.str.split(',').explode()).reset_index()
 
     return df_seq_qc
-
 
 
 def get_sequence_table(root):
@@ -853,17 +852,43 @@ def modify_label(root):
     return df_statement, df_if, df_loop, df_QI
 
 
+def improve_archivist(df_response, df_QI):
+    """
+        - 'Generic number' to 'How many'
+        - other numbers to 'Range: min-max' (whatever the min and max is)
+        - all dates to 'Generic date'
+    """
+    df_response['new_label'] = df_response.apply(lambda row: 'How many' if row['Label'] == 'Generic number' 
+                                                 else 'Range: ' + row['Min'] + '-' + row['Max'] if row['Type'] == 'Numeric' and not pd.isnull(row['Min']) 
+                                                 else 'Generic date' if row['Type'] == 'Date' 
+                                                 else row['Label'], axis=1)
+
+    df_response['Type2'] = df_response.apply(lambda row: 'DateTime' if row['Type'] == 'Date' else row['Type2'], axis=1)
+    df_response['Format'] = df_response.apply(lambda row: 'dd/mm/yyyy' if row['Type'] == 'Date' else row['Format'], axis=1)
+
+    response_dict = dict(zip(df_response.Label, df_response.new_label))
+    
+    df_response_new = df_response[['new_label', 'Type', 'Type2', 'Format', 'Min', 'Max']]
+    df_response_new.rename(columns={'new_label': 'Label'}, inplace=True)
+    df_response_new.drop_duplicates(subset=['Label', 'Type'], keep='first', inplace=True)
+
+    # replace question_item response 
+    df_QI['Response'] = df_QI['Response'].apply(lambda x: response_dict[x] if x in response_dict.keys() else x)
+
+    return df_response_new, df_QI
+    
+
 def main():
-    main_dir = '../Jenny_ucl/us_covid19_xml/2020_06'
-    input_name = 'UKHLSCovidJun20_v01_20200804.xml'
+    main_dir = '../Jenny_ucl/us_covid19_xml/2020_07'
+    input_name = 'UKHLSCovidJul20_v01.xml'
     xmlFile = os.path.join(main_dir, input_name)
 
     output_dir_name = input_name.split('_')[0]
-    output_dir = os.path.join(main_dir, output_dir_name, 'archivist_table')
+    output_dir = os.path.join(main_dir, output_dir_name, 'archivist_tables')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    tree = ET.parse(xmlFile)
+    tree = ET.parse(xmlFile, parser=ET.XMLParser(encoding="utf-8"))
     root = tree.getroot()
 
     # inspect xml
@@ -873,20 +898,22 @@ def main():
 
     get_ordered_tables(root)
     df_study, df_sequence = get_sequence_table(root)
-    df_study.to_csv(os.path.join(output_dir, 'study.csv'), index=False, sep=';')
-    df_sequence.to_csv(os.path.join(output_dir, 'sequence.csv'), index=False, sep=';')
+    df_study.to_csv(os.path.join(output_dir, 'study.csv'), index=False, sep='\t')
+    df_sequence.to_csv(os.path.join(output_dir, 'sequence.csv'), index=False, sep='\t')
 
     df_response, dup_label_list = parse_response(root)
-    df_response.to_csv(os.path.join(output_dir, 'response.csv'), index=False, sep=';')
 
     df_codelist = get_codelist_table(root)
-    df_codelist.to_csv(os.path.join(output_dir, 'codelist.csv'), index=False, sep=';')
+    df_codelist.to_csv(os.path.join(output_dir, 'codelist.csv'), index=False, sep='\t')
 
     df_statement, df_if, df_loop, df_QI = modify_label(root)
-    df_statement.to_csv(os.path.join(output_dir, 'statement.csv'), index=False, sep=';')
-    df_if.to_csv(os.path.join(output_dir, 'condition.csv'), index=False, sep=';')
-    df_loop.to_csv(os.path.join(output_dir, 'loop.csv'), index=False, sep=';')
-    df_QI.to_csv(os.path.join(output_dir, 'question_item.csv'), index=False, sep=';')
+    df_statement.to_csv(os.path.join(output_dir, 'statement.csv'), index=False, sep='\t')
+    df_if.to_csv(os.path.join(output_dir, 'condition.csv'), index=False, sep='\t')
+    df_loop.to_csv(os.path.join(output_dir, 'loop.csv'), index=False, sep='\t')
+
+    df_response_i, df_QI_i = improve_archivist(df_response, df_QI)
+    df_response_i.to_csv(os.path.join(output_dir, 'response.csv'), index=False, sep='\t')
+    df_QI_i.to_csv(os.path.join(output_dir, 'question_item.csv'), index=False, sep='\t')
 
 
 if __name__ == "__main__":
