@@ -168,7 +168,7 @@ def get_questionnaire(tree):
     df['seq_new'] = df.apply(lambda row: re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist') else row['seq'], axis=1)
 
     df.drop(['source', 'seq'], axis=1, inplace=True)
-    df['source'] = df.apply(lambda row: row['source_new'] if row['source_new'] != 'listlevel1WW8Num' else 'codelist' , axis=1) 
+    df['source'] = df.apply(lambda row: row['source_new'] if row['source_new'] != 'listlevel1WW8Num' else 'codelist' , axis=1)
     df['seq'] = df['seq_new']
     df.drop(['source_new', 'seq_new'], axis=1, inplace=True)
 
@@ -183,7 +183,7 @@ def get_questionnaire(tree):
     new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
     # special case:
     new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|\(If|{ If|If claiming sickness', row['title'], re.IGNORECASE)) 
-else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE)) 
+else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE))
 else row['source'], axis=1)
     new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) or ('{Ask for each' in row['title'])) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
 
@@ -191,7 +191,7 @@ else row['source'], axis=1)
     question_list = ['Hdob']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
-    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|OPEN ENDED|ENTER DATE|DATETYPE|ENTER|Enter|DATETYPE', row['title'])) & ~(row['question_source'] in ('Instruction', 'Loop'))
+    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|OPEN ENDED|ENTER DATE|DATETYPE|DATETYPE', row['title'])) & ~(row['question_source'] in ('Instruction', 'Loop'))
 else 'Response' if row['title'].lower().startswith('enter ') else row['question_source'], axis=1)
 
     new_df.drop(['source', 'condition_source', 'new_source', 'question_source'], axis=1, inplace=True)
@@ -200,14 +200,14 @@ else 'Response' if row['title'].lower().startswith('enter ') else row['question_
 
     # request 1: Change all text response domains to 'Generic text'
     new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] == 'ENTER DATE'
-                                                   else 1 if row['source'] == 'Response' and any(re.findall(r'Open answer|OPEN ENDED|ENTER|Enter', row['title']))
+                                                   else 1 if row['source'] == 'Response' and any(re.findall(r'Open answer|OPEN ENDED', row['title']))
                                                    else 0, axis=1)
 
-    for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist(): 
+    for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist():
         new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
         new_df.loc[len(new_df)] = [i+0.5, 'DATETYPE', 0, 'Response', 0]
 
-    for i in new_df.loc[(new_df['Type_text'] == 1), :]['sourceline'].tolist(): 
+    for i in new_df.loc[(new_df['Type_text'] == 1), :]['sourceline'].tolist():
         new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
         new_df.loc[len(new_df)] = [i+0.5, 'Generic text', 0, 'Response', 0]
 
@@ -539,6 +539,14 @@ def main():
         appended_data.append(df_q)
     df = pd.concat(appended_data)
 
+    # manual fix SHOWCARD C2Qualc, split into two rows
+    df.loc[-1] = [168, 'SHOWCARD C2', 0, 'Instruction', 100168 ]  # adding a row
+    df = df.sort_values('new_sourceline')
+
+    df.at[df['new_sourceline'] == 100169, 'title'] = 'Qualc'
+    df.at[df['new_sourceline'] == 100169, 'source'] = ' SectionNumber'
+    df.at[df['new_sourceline'] == 100170, 'source'] = 'Standard'
+
     df.at[df['new_sourceline'] == 102, 'title'] = '3. NHS/Health trust or other establishment providing nursing care'
     df = df[df.new_sourceline != 103]
 
@@ -676,7 +684,7 @@ def main():
     df.loc[df['new_sourceline'] == 100250, ['new_sourceline']] = 100249
     df.loc[df['new_sourceline'] == 100267, ['source']] = 'codelist'
 
-
+    df = df.drop_duplicates()
     df = df.sort_values('new_sourceline').reset_index()
 
     # rename duplicated question names
