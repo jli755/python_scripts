@@ -350,7 +350,6 @@ def get_question_items(df):
     df_question_all.loc[df_question_all['Literal'].isnull(), 'Literal'] = df_question_all['Instructions']
     df_question_all.loc[df_question_all['Literal'] == df_question_all['Instructions'], 'Instructions'] = None
 
-    df_question_all.to_csv('tmp.csv', sep=';')
     return df_question_all
 
 
@@ -497,6 +496,7 @@ def get_statements(df):
     df_statement = df_statement.drop('ind', 1)
 
     return df_statement
+
 
 def main():
     input_dir = '../LSYPE1/wave1-html'
@@ -750,7 +750,7 @@ def main():
     # 3. Statements
     df_statement = get_statements(df[df['source'] == 'Statement'])
 
-    # 3. Question grids 
+    # 3. Question grids
     df_question_grids, df_qg_codes = get_question_grids(df[df['questions'].isin(question_grid_names)])
     df_question_grids.to_csv('../LSYPE1/wave1-html/df_qg.csv', sep = ';', encoding = 'utf-8', index=False)
 
@@ -829,6 +829,24 @@ def main():
     df_all_new['section_label'] = df_all_new['section_label'].fillna(method='ffill')
     df_all_new.to_csv('../LSYPE1/wave1-html/TMP.csv', sep = ';', encoding = 'utf-8', index=False)
 
+    # Label statements after the next question e.g, statement_1 label would be s_qSHGInt
+    # find next question for all statements
+    d_statement_name = {}
+    l_label = df_all_new['Label']
+    for index, item in enumerate(l_label):
+        if item.startswith('statement'):
+            for it in l_label[index:]:
+                if it.startswith('qi_'):
+                    d_statement_name[item] = it
+                    break
+    df_statment_name = pd.DataFrame(d_statement_name.items(), columns=['old_name', 'question_item_name'])
+    df_statment_name['question_name'] = df_statment_name['question_item_name'].apply(lambda x: x.split('_')[-1])
+    df_statment_name['question_name_num'] = df_statment_name.groupby(['question_name']).cumcount()
+    df_statment_name['new_question_name'] = df_statment_name.apply(lambda row: 's_q' + row['question_name'] if row['question_name_num'] == 0
+                                                                          else 's_q' + row['question_name'] + '_' + str(row['question_name_num']),
+                                                                          axis = 1)
+    d_statement_replace = dict(zip(df_statment_name.old_name, df_statment_name.new_question_name))
+    print(d_statement_replace)
 
     df_mapping = df_parent.loc[ df_parent['End'] > 0, ['Label', 'source', 'sourceline', 'End']]
 
@@ -848,6 +866,8 @@ def main():
     df_all_new['branch'] = 0
     df_all_new['Position'] = df_all_new['Position'].astype(int)
 
+    # replace new name for statement
+    df_all_new = df_all_new.replace(d_statement_replace)
 
     df_all_new.to_csv('../LSYPE1/wave1-html/df_parent.csv', sep = ';', encoding = 'utf-8', index=False)
 
@@ -873,6 +893,9 @@ def main():
     df_loops_new['Loop While'] = ''
     df_loops_new[loops_keep].to_csv(os.path.join(input_dir, 'loops.csv'), encoding='utf-8', sep=';', index=False)
 
+    # replace new name for statement
+    df_statement = df_statement.replace(d_statement_replace)
+
     df_statement_new = pd.merge(df_statement, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
     statement_keep = ['Label', 'Literal', 'above_label', 'parent_type', 'branch', 'Position']
     df_statement_new[statement_keep].to_csv(os.path.join(input_dir, 'statements.csv'), encoding='utf-8', sep=';', index=False)
@@ -880,6 +903,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
