@@ -166,6 +166,8 @@ def get_questionnaire(tree):
                                             # Open answer should be a response domain Generic text rather than used/added to question literal.
                                             # Open type: long verbatim answer is the response domain Long text
                                             else 'Response' if row['title'].lower().startswith('open')
+                                            # Hours 0-XX is a response domain which should be labelled Range: 0-50
+                                            else 'Response' if row['title'].lower().startswith('hours')
                                             else row['source'], axis=1)
 
     df['seq_new'] = df.apply(lambda row: re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist') else row['seq'], axis=1)
@@ -201,7 +203,7 @@ else 'Response' if row['title'].lower().startswith('enter ') else row['question_
     new_df.rename(columns={'response_source': 'source'}, inplace=True)
 
     # request 1: Change all text response domains to 'Generic text'
-    new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] == 'ENTER DATE'
+    new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] =='ENTER DATE'
                                                    else 0, axis=1)
 
     for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist():
@@ -407,7 +409,7 @@ def get_conditions(df):
 
     # special case: "if a=b" without ()
     df_conditions['Logic_c2'] = df_conditions.apply(lambda row: row['Logic_c1'] if len(row['Logic_c1']) > 0
-        else (row['Logic_name1'] + re.search(r"(?:{})(.*)".format(row['Logic_name1']), row['title']).group(1)).rstrip('}').rstrip(' ') if len(row['Logic_name1']) > 0 
+        else (row['Logic_name1'] + re.search(r"(?:{})(.*)".format(row['Logic_name1']), row['title']).group(1)).rstrip('}').rstrip(' ') if len(row['Logic_name1']) > 0
         else '', axis=1)
     # remove some string, only keep () or () and ()
     # df_conditions['Logic_c3'] = df_conditions['Logic_c1'].apply(lambda x: ''.join(re.findall('\(.*?\)| or | and | OR | AND ', x)))
@@ -542,6 +544,7 @@ def main():
         df_q.to_csv('../LSYPE1/wave1-html/{}.csv'.format(idx), sep= ';', encoding = 'utf-8', index=False)
         appended_data.append(df_q)
     df = pd.concat(appended_data)
+    df.to_csv('DF.csv', sep='\t')
 
     # manual fix SHOWCARD C2Qualc, split into two rows
     df.loc[-1] = [168, 'SHOWCARD C2', 0, 'Instruction', 100168 ]  # adding a row
@@ -726,10 +729,13 @@ def main():
     df_response = df.loc[(df.source == 'Response') , ['questions', 'sourceline', 'seq', 'title']]
     # df_response.to_csv('../LSYPE1/wave1-html/df_response.csv', encoding = 'utf-8', index=False, sep=';')
 
-    df_response['Type'] = df_response['title'].apply(lambda x: 'Numeric' if any (c in x for c in ['Numeric', 'RANGE']) else 'Datetime' if x in ['ENTER DATE', 'DATETYPE'] else 'Text')
-    df_response['Numeric_Type/Datetime_type'] = df_response['title'].apply(lambda x: 'Integer' if any (c in x for c in ['Numeric', 'RANGE']) else 'Date' if x in ['ENTER DATE', 'DATETYPE'] else '')
-    df_response['Min'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[0] if len(re.findall(r'\d+', x)) == 2
-                                                              else None)
+    df_response['Type'] = df_response['title'].apply(lambda x: 'Numeric' if any (c in x for c in ['Numeric', 'RANGE'])
+                                                          else 'Datetime' if x in ['ENTER DATE', 'DATETYPE']
+                                                          else 'Text')
+    df_response['Numeric_Type/Datetime_type'] = df_response['title'].apply(lambda x: 'Integer' if any (c in x for c in ['Numeric', 'RANGE'])
+                                                                                else 'Date' if x in ['ENTER DATE', 'DATETYPE']
+                                                                                else '')
+    df_response['Min'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[0] if len(re.findall(r'\d+', x)) == 2 else None)
     df_response['Max'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[-1] if len(re.findall(r'\d+', x)) >= 1 else None)
 
     # request 2: Change all numeric response domains to the format 'Range: 1-18'
@@ -740,7 +746,7 @@ def main():
             return s[start:end]
         except ValueError:
             return ""
-    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
+    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-').replace('Numeric', 'Range').replace('Hours', 'Range:') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
 
     # need to change these in the original df
     vdic = pd.Series(df_response.title1.values, index=df_response.title).to_dict()
