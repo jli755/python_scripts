@@ -418,6 +418,14 @@ def get_conditions(df):
     df_conditions['Logic_r1'] = df_conditions['Logic_r'].str.replace('{', '').str.replace('}', '')
     df_conditions['Logic_r2'] = df_conditions['Logic_r1'].apply(lambda x: remove_unmatched_parentheses(x))
 
+    # reform logic: qc_EthGrp == 3, 7, 11, 14 || 16 will be qc_EthGrp == 3 || qc_EthGrp == 7 || qc_EthGrp == 14 || qc_EthGrp == 16
+    df_conditions['Logic_reform_num'] = df_conditions['Logic_r2'].apply(lambda x: re.findall(r"(\d+)", x) )
+    df_conditions['Logic_reform_equal'] = df_conditions['Logic_r2'].apply(lambda x: re.findall(r"(&&|\|\|)", x) )
+    df_conditions['Logic_reform_begin'] = df_conditions['Logic_r2'].apply(lambda x: re.findall(r"(\w+) *(==|!=)", x) )
+
+    df_conditions['Logic_reform'] = df_conditions.apply(lambda row: (' '+ row['Logic_reform_equal'][0] + ' ').join([' '.join(row['Logic_reform_begin'][0]) + ' ' + s for s in row['Logic_reform_num']])
+                                                                     if len(row['Logic_reform_equal']) != 0 and len(row['Logic_reform_num']) != 0 and len(row['Logic_reform_begin']) != 0
+                                                                     else row['Logic_r2'], axis = 1)
     df_conditions['Logic_name_roman_1'] = df_conditions['Logic_name_new'].apply(lambda x: '_'.join([x.split('_')[0], int_to_roman(int(x.split('_')[1]))]))
 
     df_conditions['Logic_name_roman'] = df_conditions.apply(lambda row: row['Logic_name_roman_1'].strip('_i') if row['tmp'] == 1 else row['Logic_name_roman_1'], axis=1)
@@ -432,7 +440,7 @@ def get_conditions(df):
         return text
 
     # rename inside 'logic', add qc_ to all question names inside the literal
-    df_conditions['Logic'] = df_conditions.apply(lambda row: add_string_qc(row['Logic_r2'], [s[0] for s in row['Logic_name']]) if row['Logic_name'] != [] else row['Logic_r2'], axis = 1)
+    df_conditions['Logic'] = df_conditions.apply(lambda row: add_string_qc(row['Logic_reform'], [s[0] for s in row['Logic_name']]) if row['Logic_name'] != [] else row['Logic_reform'], axis = 1)
 
     df_conditions.rename(columns={'title': 'Literal'}, inplace=True)
     #df_conditions = df_conditions.drop(['Logic_c', 'Logic_c1', 'Logic_c3', 'Logic_r', 'Logic_name', 'Logic_name1', 'tmp', 'tmp2', 'Logic_name2', 'Logic_name3', 'Logic_name_new', 'Logic_name_roman', 'Logic_name_roman_1'], 1)
