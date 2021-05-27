@@ -183,8 +183,8 @@ def get_questionnaire(tree):
     df['title'] = df['title'].str.strip()
     df.drop_duplicates(keep = 'first', inplace = True)
 
-    # remove {Ask all}, Refused, Dont know, Dont Know
-    new_df_1 = df[~df['title'].str.lower().str.contains('ask all')]
+    # remove {ask all}, Refused, Dont know, Dont Know
+    new_df_1 = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
     new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
     # special case:
     new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|\(If|{ If|If claiming sickness', row['title'], re.IGNORECASE)) 
@@ -291,7 +291,7 @@ def get_question_grids(df):
 
 def get_question_items(df):
     """
-    Build questions table 
+    Build questions table
         - Label
         - Literal
         - Instructions
@@ -411,6 +411,7 @@ def get_conditions(df):
     df_conditions['Logic_c2'] = df_conditions.apply(lambda row: row['Logic_c1'] if len(row['Logic_c1']) > 0
         else (row['Logic_name1'] + re.search(r"(?:{})(.*)".format(row['Logic_name1']), row['title']).group(1)).rstrip('}').rstrip(' ') if len(row['Logic_name1']) > 0
         else '', axis=1)
+
     # remove some string, only keep () or () and ()
     # df_conditions['Logic_c3'] = df_conditions['Logic_c1'].apply(lambda x: ''.join(re.findall('\(.*?\)| or | and | OR | AND ', x)))
 
@@ -697,7 +698,7 @@ def main():
     # rename duplicated question names
     df['tmp'] = df.groupby('title').cumcount() 
     df['title_new'] = df.apply(lambda row: row['title'] + '_' + str(row['tmp']) if row['source'] == 'SectionNumber' else row['title'], axis=1)
-    df['title_new'] = df['title_new'].str.strip('_0')
+    df['title_new'] = df['title_new'].str.replace('_0', '')
 
     # find each question
     df['questions'] = df.apply(lambda row: row['title_new'] if row['source'] in ['SectionNumber'] else None, axis=1)
@@ -719,15 +720,19 @@ def main():
     df_codes['value'] = df_codes['codes_order']
 
     # strip number. out from title
-    df_codes['Category'] = df_codes['title'].apply(lambda x: re.sub('^\d+', '', x).strip('.').strip(',').strip(' '))
-    df_codes_out = df_codes.drop(['questions', 'title'], 1)
+    df_codes['Category_old'] = df_codes['title'].apply(lambda x: re.sub('^\d+', '', x).strip('.').strip(',').strip(' '))
+
+    # ignore the GOTO…. in categories
+    df_codes['Category'] = df_codes['Category_old'].apply(lambda x: x[:x.index("GOTO")].rstrip() if 'GOTO' in x else x)
+
+    df_codes_out = df_codes.drop(['questions', 'title', 'Category_old'], 1)
 
     # need to add codes from question grid before write out
     #df_codes_out.to_csv('../LSYPE1/wave1-html/codes.csv', encoding = 'utf-8', index=False, sep=';')
 
     # 2. Response: numeric, text, datetime
     df_response = df.loc[(df.source == 'Response') , ['questions', 'sourceline', 'seq', 'title']]
-    # df_response.to_csv('../LSYPE1/wave1-html/df_response.csv', encoding = 'utf-8', index=False, sep=';')
+    #df_response.to_csv('../LSYPE1/wave1-html/df_response.csv', encoding = 'utf-8', index=False, sep=';')
 
     df_response['Type'] = df_response['title'].apply(lambda x: 'Numeric' if any (c in x for c in ['Numeric', 'RANGE'])
                                                           else 'Datetime' if x in ['ENTER DATE', 'DATETYPE']
