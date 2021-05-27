@@ -163,6 +163,9 @@ def get_questionnaire(tree):
                                             else 'Instruction' if row['title'].lower().startswith('- ')
                                             # All text which starts with upper case words should be added to instructions
                                             else 'Instruction' if (len(row['title'].split(' ')) > 1 and row['source'] in ['Standard', 'PlainText'] and row['title'].split(' ')[0].upper() == row['title'].split(' ')[0])
+                                            # Open answer should be a response domain Generic text rather than used/added to question literal.
+                                            # Open type: long verbatim answer is the response domain Long text
+                                            else 'Response' if row['title'].lower().startswith('open')
                                             else row['source'], axis=1)
 
     df['seq_new'] = df.apply(lambda row: re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist') else row['seq'], axis=1)
@@ -187,11 +190,10 @@ else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END O
 else row['source'], axis=1)
     new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) or ('{Ask for each' in row['title'])) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
 
-
     question_list = ['Hdob']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
-    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|OPEN ENDED|ENTER DATE|DATETYPE|DATETYPE', row['title'])) & ~(row['question_source'] in ('Instruction', 'Loop'))
+    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop'))
 else 'Response' if row['title'].lower().startswith('enter ') else row['question_source'], axis=1)
 
     new_df.drop(['source', 'condition_source', 'new_source', 'question_source'], axis=1, inplace=True)
@@ -200,19 +202,13 @@ else 'Response' if row['title'].lower().startswith('enter ') else row['question_
 
     # request 1: Change all text response domains to 'Generic text'
     new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] == 'ENTER DATE'
-                                                   else 1 if row['source'] == 'Response' and any(re.findall(r'Open answer|OPEN ENDED', row['title']))
                                                    else 0, axis=1)
 
     for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist():
         new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
         new_df.loc[len(new_df)] = [i+0.5, 'DATETYPE', 0, 'Response', 0]
 
-    for i in new_df.loc[(new_df['Type_text'] == 1), :]['sourceline'].tolist():
-        new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
-        new_df.loc[len(new_df)] = [i+0.5, 'Generic text', 0, 'Response', 0]
-
     new_df_sorted = new_df.sort_values(['sourceline'])
-
     new_df_sorted.drop(['Type_text'], axis=1, inplace=True)
 
     return new_df_sorted
@@ -340,8 +336,8 @@ def get_question_items(df):
 
     df_question_all['source'] = 'question'
     df_question_all['Label'] = 'qi_' + df_question_all['questions']
-   # df_question_all['Label'] = df_question_all.groupby('questions').questions.apply(lambda n: 'qi_' + n.str.strip() + '_' + (np.arange(len(n))).astype(str))
-   # df_question_all['Label'] = df_question_all['Label'].str.strip('_0')
+    # df_question_all['Label'] = df_question_all.groupby('questions').questions.apply(lambda n: 'qi_' + n.str.strip() + '_' + (np.arange(len(n))).astype(str))
+    # df_question_all['Label'] = df_question_all['Label'].str.strip('_0')
 
     df_question_all = df_question_all.drop_duplicates(subset=['Label'], keep='first')
 
@@ -833,9 +829,9 @@ def main():
 
 
     df_all_new = pd.merge(df_parent, df_sequences_m, how='left', on=['sourceline'])
-  #  df_all_new['section_id'] = df_all_new['section_id'].fillna(method='ffill')
+    #df_all_new['section_id'] = df_all_new['section_id'].fillna(method='ffill')
     df_all_new['section_label'] = df_all_new['section_label'].fillna(method='ffill')
-    df_all_new.to_csv('../LSYPE1/wave1-html/TMP.csv', sep = ';', encoding = 'utf-8', index=False)
+    # df_all_new.to_csv('../LSYPE1/wave1-html/TMP.csv', sep = ';', encoding = 'utf-8', index=False)
 
     # Label statements after the next question e.g, statement_1 label would be s_qSHGInt
     # find next question for all statements
@@ -864,7 +860,7 @@ def main():
     for index,row in df_all_new.iterrows():
         df_all_new.at[index, 'above_label'] = find_parent(row['sourceline'], row['End'], df_mapping, row['source'], row['section_label'])
 
-    df_all_new.to_csv('../LSYPE1/wave1-html/TMPTMP.csv', sep = ';', encoding = 'utf-8', index=False)
+    # df_all_new.to_csv('../LSYPE1/wave1-html/TMPTMP.csv', sep = ';', encoding = 'utf-8', index=False)
 
     # calculate position
     df_all_new['Position'] = df_all_new.groupby('above_label').cumcount() + 1
