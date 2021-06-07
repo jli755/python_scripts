@@ -184,7 +184,9 @@ def get_questionnaire(tree):
     df.drop_duplicates(keep = 'first', inplace = True)
 
     # remove {ask all}, Refused, Dont know, Dont Know
-    new_df_1 = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
+###    new_df_1 = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
+    new_df_1 = df
+    # remove refused/dont know
     new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
     # special case:
     new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|\(If|{ If|If claiming sickness', row['title'], re.IGNORECASE)) 
@@ -385,7 +387,7 @@ def get_conditions(df):
     """
     Build conditions table 
     """
-    df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title']]
+    df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title', 'condition_end']]
 
     # if can not parse (a=b), use the name of the NEXT question
     df_conditions['next_question'] = df_conditions['questions'].shift(-1)
@@ -508,6 +510,10 @@ def get_statements(df):
 def main():
     input_dir = '../LSYPE1/wave1-html'
     html_names = ['W1_HOUSEHOLD_SECTION - Questionnaire.htm', 'W1_INDIVIDUAL_PARENT - Questionnaire.htm', 'W1__MAIN_PARENT - Questionnaire.htm', 'W1__YOUNG_PERSON - Questionnaire.htm']
+
+    output_dir = os.path.join(input_dir, 'wave1_parsed')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     appended_data = []
     for idx, val in enumerate(html_names):
@@ -695,6 +701,28 @@ def main():
     df = df.drop_duplicates()
     df = df.sort_values('new_sourceline').reset_index()
 
+    #TODO
+    # remove duplicated conditions.
+    # If there are two conditions with the same text e.g. Extrat5 and Extrat6 can the second one be ignored and the questions inside it be added to the first condition instead?
+    df = pd.concat([df.loc[df.source != 'Condition'],
+                           df.loc[df.source == 'Condition'].drop_duplicates(['title'],keep='first')]).sort_index()
+
+
+    # condition end at the next <ask all>
+    # 1. find all <ask all> locations
+    next_q = df.loc[(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']) )
+                     | ( df['source'] == 'SequenceNumber' ), 'new_sourceline'].to_list()
+    print(next_q)
+    df['condition_end'] = df.apply(lambda row: min( [y for y in next_q if y - row['new_sourceline'] > 0] )
+                                               if (row['new_sourceline'] <  max(next_q) and row['source'] == 'Condition')
+                                               else None, axis=1)
+
+    df.to_csv('tmp_sourceline.csv', sep='\t')
+
+    # remove {ask all}, Refused, Dont know, Dont Know
+    df = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
+
+
     # rename duplicated question names
     df['tmp'] = df.groupby('title').cumcount() 
     df['title_new'] = df.apply(lambda row: row['title'] + '_' + str(row['tmp']) if row['source'] == 'SectionNumber' else row['title'], axis=1)
@@ -713,7 +741,7 @@ def main():
 
 
     # 1. Codes
-    df_codes = df.loc[(df.source == 'codelist') & (~df.questions.isin(question_grid_names)), ['questions', 'sourceline', 'seq', 'title']]
+    df_codes = df.loc[(df.source == 'codelist'), ['questions', 'sourceline', 'seq', 'title']]
     # label
     df_codes['Label'] = 'cs_' + df_codes['questions']
     df_codes.rename(columns={'sourceline': 'Number', 'seq': 'codes_order'}, inplace=True)
@@ -727,8 +755,12 @@ def main():
 
     df_codes_out = df_codes.drop(['questions', 'title', 'Category_old'], 1)
 
-    # need to add codes from question grid before write out
-    #df_codes_out.to_csv('../LSYPE1/wave1-html/codes.csv', encoding = 'utf-8', index=False, sep=';')
+    # write out
+    df_codes_out.rename(columns={'codes_order': 'Code_Order', 
+                                 'value': 'Code_Value'}, 
+                        inplace=True)
+    df_codes_out = df_codes_out[['Label', 'Code_Order', 'Code_Value', 'Category']] 
+    df_codes_out.to_csv(os.path.join(output_dir, 'codelist.csv'), encoding = 'utf-8', index=False, sep=';')
 
     # 2. Response: numeric, text, datetime
     df_response = df.loc[(df.source == 'Response') , ['questions', 'sourceline', 'seq', 'title']]
@@ -767,12 +799,17 @@ def main():
     response_keep = ['Label', 'Type', 'Numeric_Type/Datetime_type', 'Min', 'Max']
     df_response_sub = df_response.loc[:, response_keep]
     df_response_dedup = df_response_sub.drop_duplicates()
-    df_response_dedup.to_csv('../LSYPE1/wave1-html/response.csv', sep= ';', encoding = 'utf-8', index=False)
+
+    df_response_dedup.rename(columns={'Numeric_Type/Datetime_type': 'Type2'},
+                             inplace=True)
+    df_response_dedup['Format'] = None
+    response_pipeline = ['Label', 'Type', 'Type2', 'Format', 'Min', 'Max']
+    df_response_dedup[response_pipeline].to_csv(os.path.join(output_dir, 'response.csv'), sep= ';', encoding = 'utf-8', index=False)
 
 
     # 3. Statements
     df_statement = get_statements(df[df['source'] == 'Statement'])
-
+    """
     # 3. Question grids
     df_question_grids, df_qg_codes = get_question_grids(df[df['questions'].isin(question_grid_names)])
     df_question_grids.to_csv('../LSYPE1/wave1-html/df_qg.csv', sep = ';', encoding = 'utf-8', index=False)
@@ -780,25 +817,42 @@ def main():
     df_codes_out['codes_order'] = df_codes_out['codes_order'].astype(int)
     df_codes_out['value'] = df_codes_out['value'].astype(int)
     df_codes_final = df_codes_out.append(df_qg_codes, ignore_index=True)
-    df_codes_final.to_csv('../LSYPE1/wave1-html/codes.csv', sep = ';', encoding = 'utf-8', index=False)
-    # add one more line here for question grids
-    with open('../LSYPE1/wave1-html/codes.csv', 'a') as file:
-        file.write(';1;-;1;-\n')
+    df_codes_final.to_csv(os.path.join(output_dir, 'codelist.csv', sep = ';', encoding = 'utf-8', index=False)
 
+    # add one more line here for question grids
+    with open(os.path.join(output_dir, 'codelist.csv'), 'a') as file:
+        file.write(';1;-;1;-\n')
 
     # 4. Question items
     # minus question grids
     df_all_questions = df[~df['questions'].isin(question_grid_names)]
-
     df_question_items = get_question_items(df_all_questions)
     df_question_items.to_csv('../LSYPE1/wave1-html/df_qi.csv', sep = ';', encoding = 'utf-8', index=False)
-
+    """
+    df_question_items = get_question_items(df)
 
     # 5. Sequences
     df_sequences = df.loc[(df.source == 'SequenceNumber'), :].reset_index()
     df_sequences.rename(columns={'title': 'Label'}, inplace=True)
     df_sequences['section_id'] = df_sequences.index + 1
-    df_sequences.loc[:, ['sourceline', 'Label', 'section_id']].to_csv('../LSYPE1/wave1-html/sequences.csv', sep = ';', encoding = 'utf-8', index=False)
+
+    df_sequence_input = df_sequences.loc[:, ['sourceline', 'Label', 'section_id']]
+
+    # pipeline columns
+    sequence_pipeline = ['Label', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_sequence_input.rename(columns={'section_id': 'Position'}, inplace=True)
+    df_sequence_input['Parent_Type'] = 'CcSequence'
+    df_sequence_input['Parent_Name'] = 'Wave 1'
+    df_sequence_input['Branch'] = None
+
+    df_seq_output = df_sequence_input[sequence_pipeline]
+
+    # add top level
+    df_seq_output.loc[-1] = ['Wave 1', 'CcSequence', None, None, 1]  # adding a row
+    df_seq_output.index = df_seq_output.index + 1  # shifting index
+    df_seq_output.sort_index(inplace=True)
+
+    df_seq_output.to_csv(os.path.join(output_dir, 'sequence.csv'), sep = ';', encoding = 'utf-8', index=False)
 
 
     # 6. Conditions
@@ -816,10 +870,15 @@ def main():
     df_sequences_p['source'] = 'CcSequence'
     df_questions_items_p = df_question_items.loc[:, ['sourceline', 'Label']]
     df_questions_items_p['source'] = 'CcQuestions'
+    """
     df_questions_grids_p = df_question_grids.loc[:, ['sourceline', 'Label']]
     df_questions_grids_p['source'] = 'CcQuestions'
-    df_conditions_p = df_conditions.loc[:, ['sourceline', 'Label']]
+    """
+    df_conditions_p = df_conditions.loc[:, ['sourceline', 'Label', 'condition_end']]
+    df_conditions_p.rename(columns={'condition_end': 'End Value'}, inplace=True)
     df_conditions_p['source'] = 'CcCondition'
+    print(df_conditions_p.tail())
+
     df_loops_p = df_loops.loc[:, ['Start Value', 'End Value', 'Label']]
     df_loops_p.rename(columns={'Start Value': 'sourceline'}, inplace=True)
     df_loops_p['source'] = 'CcLoop'
@@ -827,9 +886,13 @@ def main():
     df_statement_p['source'] = 'CcStatement'
 
     df_sequences_p_1 = pd.DataFrame([[0, 'LSYPE_Wave_1', 'CcSequence']], columns=['sourceline', 'Label', 'source'])
-
+    """
     df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_questions_grids_p, df_conditions_p, df_sequences_p_1, df_loops_p, df_statement_p]).reset_index()
+    """
+    df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_conditions_p, df_sequences_p_1, df_loops_p, df_statement_p]).reset_index()
+
     df_parent = df_parent.sort_values(by=['sourceline']).reset_index()
+    df_parent.to_csv('TMP_parent.csv', sep='\t')
 
     df_sequence_position = df_parent
     df_sequence_position['Position'] = range(0, len(df_sequence_position))
@@ -839,8 +902,10 @@ def main():
     df_sequences_out.rename(columns={'Position': 'section_id'}, inplace=True)
     df_sequences_out.loc[:, ['sourceline', 'Label', 'section_id']].to_csv('../LSYPE1/wave1-html/sequences_1.csv', sep = ';', encoding = 'utf-8', index=False)
 
-    df_parent['End'] = df_parent.apply(lambda row: row['sourceline'] + 5 if row['source'] == 'CcCondition' else row['End Value'], axis=1)
-
+    #TODO
+    # End at the next {ask all}
+    df_parent['End'] = df_parent.apply(lambda row: row['End Value']  if row['source'] == 'CcCondition' else row['End Value'], axis=1)
+    df_parent.to_csv('tmp_end.csv', sep='\t')
     # sections region
     df_sequences_m = df_sequence_position.loc[(df_sequence_position['source'] == 'CcSequence'), ['Label', 'sourceline']]
     df_sequences_m.rename(columns={'Label': 'section_label'}, inplace=True)
@@ -897,16 +962,34 @@ def main():
     # output csv
     df_questions_new = pd.merge(df_question_items, df_all_new, how='left', on=['sourceline', 'Label'])
     questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position']
-    df_questions_new[questions_keep].to_csv(os.path.join(input_dir, 'question_items.csv'), encoding='utf-8', index=False, sep = ';')
+    df_qi_input = df_questions_new[questions_keep]
 
+    # pipeline columns
+    question_item_pipeline = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses']
+    df_qi_input.rename(columns={'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+    df_qi_input['min_responses'] = 1
+    df_qi_input['max_responses'] = 1
+
+    df_qi_input[question_item_pipeline].to_csv(os.path.join(output_dir, 'question_item.csv'), encoding='utf-8', index=False, sep = ';')
+    """
     df_question_grids_new = pd.merge(df_question_grids, df_all_new, how='left', on=['sourceline', 'Label'])
     question_grids_keep = ['Label', 'Literal', 'Instructions', 'horizontal_code_list_name', 'vertical_code_list_name', 'above_label', 'parent_type', 'branch', 'Position']
-    df_question_grids_new[question_grids_keep].to_csv(os.path.join(input_dir, 'question_grids.csv'), sep = ';', encoding='utf-8', index=False)
-
+    df_question_grids_new[question_grids_keep].to_csv(os.path.join(output_dir, 'question_grids.csv'), sep = ';', encoding='utf-8', index=False)
+    """
     df_conditions_new = pd.merge(df_conditions, df_all_new, how='left', on=['sourceline', 'Label'])
 
     conditions_keep = ['Label', 'Literal', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
-    df_conditions_new[conditions_keep].to_csv(os.path.join(input_dir, 'conditions.csv'), sep = ';', encoding='utf-8', index=False)
+    df_condition_input = df_conditions_new[conditions_keep]
+
+    # pipeline columns
+    condition_pipeline = ['Label', 'Literal', 'Logic', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_condition_input.rename(columns={'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)  
+
+    df_condition_input[condition_pipeline].to_csv(os.path.join(output_dir, 'condition.csv'), sep = ';', encoding='utf-8', index=False)
 
     df_loops_new = pd.merge(df_loops, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
     loops_keep = ['Label', 'Variable', 'Start Value', 'End Value', 'Loop While', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
@@ -914,14 +997,35 @@ def main():
     df_loops_new['Start Value'] = 1
     df_loops_new['End Value'] = ''
     df_loops_new['Loop While'] = ''
-    df_loops_new[loops_keep].to_csv(os.path.join(input_dir, 'loops.csv'), encoding='utf-8', sep=';', index=False)
+
+    df_loop_input = df_loops_new[loops_keep]
+
+    # pipeline columns
+    loop_pipeline = ['Label', 'Loop_While', 'Start_value', 'End_Value', 'Variable', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_loop_input.rename(columns={'Start Value': 'Start_value',
+                                'End Value': 'End_Value',
+                                'Logic': 'Loop_While',
+                                'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+
+    df_loop_input[loop_pipeline].to_csv(os.path.join(output_dir, 'loop.csv'), encoding='utf-8', sep=';', index=False)
 
     # replace new name for statement
     df_statement = df_statement.replace(d_statement_replace)
 
     df_statement_new = pd.merge(df_statement, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
     statement_keep = ['Label', 'Literal', 'above_label', 'parent_type', 'branch', 'Position']
-    df_statement_new[statement_keep].to_csv(os.path.join(input_dir, 'statements.csv'), encoding='utf-8', sep=';', index=False)
+
+    df_statement_input = df_statement_new[statement_keep]
+
+    # pipeline columns
+    statement_pipeline = ['Label', 'Literal', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_statement_input.rename(columns={'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+
+    df_statement_input[statement_pipeline].to_csv(os.path.join(output_dir, 'statement.csv'), encoding='utf-8', sep=';', index=False)
 
 
 if __name__ == "__main__":
