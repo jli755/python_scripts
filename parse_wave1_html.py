@@ -189,10 +189,10 @@ def get_questionnaire(tree):
     # remove refused/dont know
     new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
     # special case:
-    new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|\(If|{ If|If claiming sickness', row['title'], re.IGNORECASE)) 
+    new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|{ If|If claiming sickness|\(If Repred|\(If Ben1|\(IF HEPOSS9 = 1-3\)|If wrk1a', row['title'], re.IGNORECASE)) 
 else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE))
 else row['source'], axis=1)
-    new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) or ('{Ask for each' in row['title'])) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
+    new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) ) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
 
     question_list = ['Hdob']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
@@ -712,7 +712,7 @@ def main():
     # 1. find all <ask all> locations
     next_q = df.loc[(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']) )
                      | ( df['source'] == 'SequenceNumber' ), 'new_sourceline'].to_list()
-    print(next_q)
+    # print(next_q)
     df['condition_end'] = df.apply(lambda row: min( [y for y in next_q if y - row['new_sourceline'] > 0] )
                                                if (row['new_sourceline'] <  max(next_q) and row['source'] == 'Condition')
                                                else None, axis=1)
@@ -737,7 +737,7 @@ def main():
 
     # actual questionnaire
     df['seq'] = df['seq'].astype(int)
-    df.sort_values('sourceline').to_csv('../LSYPE1/wave1-html/w1_attempt.csv', sep= ';', encoding = 'utf-8', index=False)
+    #df.sort_values('sourceline').to_csv('../LSYPE1/wave1-html/w1_attempt.csv', sep= ';', encoding = 'utf-8', index=False)
 
 
     # 1. Codes
@@ -756,10 +756,10 @@ def main():
     df_codes_out = df_codes.drop(['questions', 'title', 'Category_old'], 1)
 
     # write out
-    df_codes_out.rename(columns={'codes_order': 'Code_Order', 
-                                 'value': 'Code_Value'}, 
+    df_codes_out.rename(columns={'codes_order': 'Code_Order',
+                                 'value': 'Code_Value'},
                         inplace=True)
-    df_codes_out = df_codes_out[['Label', 'Code_Order', 'Code_Value', 'Category']] 
+    df_codes_out = df_codes_out[['Label', 'Code_Order', 'Code_Value', 'Category']]
     df_codes_out.to_csv(os.path.join(output_dir, 'codelist.csv'), encoding = 'utf-8', index=False, sep=';')
 
     # 2. Response: numeric, text, datetime
@@ -877,7 +877,6 @@ def main():
     df_conditions_p = df_conditions.loc[:, ['sourceline', 'Label', 'condition_end']]
     df_conditions_p.rename(columns={'condition_end': 'End Value'}, inplace=True)
     df_conditions_p['source'] = 'CcCondition'
-    print(df_conditions_p.tail())
 
     df_loops_p = df_loops.loc[:, ['Start Value', 'End Value', 'Label']]
     df_loops_p.rename(columns={'Start Value': 'sourceline'}, inplace=True)
@@ -892,7 +891,7 @@ def main():
     df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_conditions_p, df_sequences_p_1, df_loops_p, df_statement_p]).reset_index()
 
     df_parent = df_parent.sort_values(by=['sourceline']).reset_index()
-    df_parent.to_csv('TMP_parent.csv', sep='\t')
+    #df_parent.to_csv('TMP_parent.csv', sep='\t')
 
     df_sequence_position = df_parent
     df_sequence_position['Position'] = range(0, len(df_sequence_position))
@@ -905,7 +904,7 @@ def main():
     #TODO
     # End at the next {ask all}
     df_parent['End'] = df_parent.apply(lambda row: row['End Value']  if row['source'] == 'CcCondition' else row['End Value'], axis=1)
-    df_parent.to_csv('tmp_end.csv', sep='\t')
+
     # sections region
     df_sequences_m = df_sequence_position.loc[(df_sequence_position['source'] == 'CcSequence'), ['Label', 'sourceline']]
     df_sequences_m.rename(columns={'Label': 'section_label'}, inplace=True)
@@ -934,11 +933,11 @@ def main():
                                                                           else 's_q' + row['question_name'] + '_' + str(row['question_name_num']),
                                                                           axis = 1)
     d_statement_replace = dict(zip(df_statment_name.old_name, df_statment_name.new_question_name))
-    print(d_statement_replace)
+    # print(d_statement_replace)
 
     df_mapping = df_parent.loc[ df_parent['End'] > 0, ['Label', 'source', 'sourceline', 'End']]
 
-    df_mapping.to_csv('../LSYPE1/wave1-html/TMP_mapping.csv', sep = ';', encoding = 'utf-8', index=False)
+    #df_mapping.to_csv('../LSYPE1/wave1-html/TMP_mapping.csv', sep = ';', encoding = 'utf-8', index=False)
 
     # find above label
     for index,row in df_all_new.iterrows():
