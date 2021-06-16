@@ -324,7 +324,7 @@ def get_question_items(df):
     # responds
     # 1. codelist
     df_question_code = df.loc[df['source'] == 'codelist', ['questions']].drop_duplicates()
-    df_question_code['Response'] = 'cs_' + df_question_code['questions']
+    df_question_code['Response'] = 'cs_q' + df_question_code['questions']
 
     # 2. Response
     df_question_response = df.loc[df['source'] == 'Response', ['questions', 'title']].drop_duplicates()
@@ -743,7 +743,7 @@ def main():
     # 1. Codes
     df_codes = df.loc[(df.source == 'codelist'), ['questions', 'sourceline', 'seq', 'title']]
     # label
-    df_codes['Label'] = 'cs_' + df_codes['questions']
+    df_codes['Label'] = 'cs_q' + df_codes['questions']
     df_codes.rename(columns={'sourceline': 'Number', 'seq': 'codes_order'}, inplace=True)
     df_codes['value'] = df_codes['codes_order']
 
@@ -776,6 +776,8 @@ def main():
     df_response['Max'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[-1] if len(re.findall(r'\d+', x)) >= 1 else None)
 
     # request 2: Change all numeric response domains to the format 'Range: 1-18'
+    # open answers without a max be entered as Long text
+    # open answers with a max be entered as Generic text
     def find_between( s, first, last ):
         try:
             start = s.index( first ) + len( first )
@@ -783,8 +785,9 @@ def main():
             return s[start:end]
         except ValueError:
             return ""
-    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-').replace('Numeric', 'Range').replace('Hours', 'Range:') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
+    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-').replace('Numeric', 'Range').replace('Hours', 'Range:') if not pd.isnull(row['Min']) > 0 else 'Long text' if (len(re.findall('(?i)open answer', row['title'])) > 0 and pd.isnull(row['Max'])) else 'Generic text' if (len(re.findall('(?i)open answer', row['title'])) > 0 and not pd.isnull(row['Max']))  else row['title'], axis=1)
 
+    df_response.to_csv('temp_response.csv', sep=';')
     # need to change these in the original df
     vdic = pd.Series(df_response.title1.values, index=df_response.title).to_dict()
     df.loc[df.title.isin(vdic.keys()), 'title'] = df.loc[df.title.isin(vdic.keys()), 'title'].map(vdic)
@@ -809,26 +812,7 @@ def main():
 
     # 3. Statements
     df_statement = get_statements(df[df['source'] == 'Statement'])
-    """
-    # 3. Question grids
-    df_question_grids, df_qg_codes = get_question_grids(df[df['questions'].isin(question_grid_names)])
-    df_question_grids.to_csv('../LSYPE1/wave1-html/df_qg.csv', sep = ';', encoding = 'utf-8', index=False)
 
-    df_codes_out['codes_order'] = df_codes_out['codes_order'].astype(int)
-    df_codes_out['value'] = df_codes_out['value'].astype(int)
-    df_codes_final = df_codes_out.append(df_qg_codes, ignore_index=True)
-    df_codes_final.to_csv(os.path.join(output_dir, 'codelist.csv', sep = ';', encoding = 'utf-8', index=False)
-
-    # add one more line here for question grids
-    with open(os.path.join(output_dir, 'codelist.csv'), 'a') as file:
-        file.write(';1;-;1;-\n')
-
-    # 4. Question items
-    # minus question grids
-    df_all_questions = df[~df['questions'].isin(question_grid_names)]
-    df_question_items = get_question_items(df_all_questions)
-    df_question_items.to_csv('../LSYPE1/wave1-html/df_qi.csv', sep = ';', encoding = 'utf-8', index=False)
-    """
     df_question_items = get_question_items(df)
 
     # 5. Sequences
@@ -842,13 +826,13 @@ def main():
     sequence_pipeline = ['Label', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
     df_sequence_input.rename(columns={'section_id': 'Position'}, inplace=True)
     df_sequence_input['Parent_Type'] = 'CcSequence'
-    df_sequence_input['Parent_Name'] = 'Wave 1'
+    df_sequence_input['Parent_Name'] = 'Wave1'
     df_sequence_input['Branch'] = None
 
     df_seq_output = df_sequence_input[sequence_pipeline]
 
     # add top level
-    df_seq_output.loc[-1] = ['Wave 1', 'CcSequence', None, None, 1]  # adding a row
+    df_seq_output.loc[-1] = ['Wave1', 'CcSequence', None, None, 1]  # adding a row
     df_seq_output.index = df_seq_output.index + 1  # shifting index
     df_seq_output.sort_index(inplace=True)
 
