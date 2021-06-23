@@ -158,7 +158,13 @@ def get_questionnaire(tree):
 
     df = df.apply(lambda x: x.replace('U+00A9',''))
 
-    df['source_new'] = df.apply(lambda row: 'codelist' if (row['title'][0].isdigit() == True and row['source'] in ['Standard', 'PlainText'])
+    # -1 for don't know and -92 for refused
+    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse).*', x) != None else x)
+
+    df.drop('title', axis=1, inplace=True)
+    df.rename(columns={'title_m': 'title'}, inplace=True)
+
+    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText', 'listlevel1WW8Num'])
                                             else 'Instruction' if row['title'].lower().startswith('show')
                                             else 'Instruction' if row['title'].lower().startswith('- ')
                                             # All text which starts with upper case words should be added to instructions
@@ -168,14 +174,37 @@ def get_questionnaire(tree):
                                             else 'Response' if row['title'].lower().startswith('open')
                                             # Hours 0-XX is a response domain which should be labelled Range: 0-50
                                             else 'Response' if row['title'].lower().startswith('hours')
+                                            else 'Standard' if 'ask all' in row['title']
                                             else row['source'], axis=1)
 
-    df['seq_new'] = df.apply(lambda row: re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist') else row['seq'], axis=1)
+    # assign code list group
+    df['code_group'] = df['source_new'].ne(df['source_new'].shift()).cumsum()
+    df['sequence'] = df.groupby('code_group').cumcount() + 1
 
-    df.drop(['source', 'seq'], axis=1, inplace=True)
+    df['seq_new_code'] = df.apply(lambda row: re.search(r'-\d+', row['title']).group() if (row['source_new'] == 'codelist' and row['title'][0] == '-') 
+                                              else re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist' and row['title'][0].isdigit() == True) else row['seq'], 
+                                              axis=1)
+
+    df['seq_new'] = df.apply(lambda row: row['seq_new_code'] if (row['source_new'] == 'codelist' and row['title'][0].isdigit() == True) else row['sequence'] if (row['source_new'] == 'codelist' and row['title'][0] == '-') else row['seq'], axis=1)
+
+    df['seq_new'] = df['seq_new'].astype(int)
+
+    df['seq_new_shift'] = df['seq_new'].shift(1).fillna(0).astype(int)
+    df['seq_new_shift_2'] = df['seq_new'].shift(2).fillna(0).astype(int)
+
+    df['seq_new_code_shift'] = df['seq_new_code'].shift(1).fillna(0).astype(int)
+
+    df['seq_new_code'] = df['seq_new_code'].astype(int)
+    #print(df.dtypes)
+
+    df['seq_attemp'] = df.apply(lambda row: row['seq_new_shift'] + 1 if (row['seq_new_shift'] > row['seq_new'] and row['seq_new_code'] < 0 and row['seq_new_code_shift'] > 0) 
+                                            else row['seq_new_shift_2'] + 2 if (row['seq_new_code'] < 0 and row['seq_new_code_shift'] < 0) 
+                                            else row['seq_new'], axis=1)
+
+    df.drop(['source', 'seq', 'code_group', 'sequence', 'seq_new_code', 'seq_new', 'seq_new_shift', 'seq_new_shift_2', 'seq_new_code_shift'], axis=1, inplace=True)
     df['source'] = df.apply(lambda row: row['source_new'] if row['source_new'] != 'listlevel1WW8Num' else 'codelist' , axis=1)
-    df['seq'] = df['seq_new']
-    df.drop(['source_new', 'seq_new'], axis=1, inplace=True)
+    df['seq'] = df['seq_attemp']
+    df.drop(['source_new', 'seq_attemp'], axis=1, inplace=True)
 
     df = df[pd.notnull(df['title'])]
 
@@ -185,9 +214,11 @@ def get_questionnaire(tree):
 
     # remove {ask all}, Refused, Dont know, Dont Know
 ###    new_df_1 = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
-    new_df_1 = df
+
     # remove refused/dont know
-    new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
+###    new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
+
+    new_df = df
     # special case:
     new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|{ If|If claiming sickness|\(If Repred|\(If Ben1|\(IF HEPOSS9 = 1-3\)|If wrk1a', row['title'], re.IGNORECASE)) 
 else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE))
@@ -719,7 +750,7 @@ def main():
 
     df.to_csv('tmp_sourceline.csv', sep='\t')
 
-    # remove {ask all}, Refused, Dont know, Dont Know
+    # remove {ask all}
     df = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
 
 
