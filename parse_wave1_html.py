@@ -164,7 +164,8 @@ def get_questionnaire(tree):
     df.drop('title', axis=1, inplace=True)
     df.rename(columns={'title_m': 'title'}, inplace=True)
 
-    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText', 'listlevel1WW8Num'])
+    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText'])
+                                            else 'codelist' if row['source'] == 'listlevel1WW8Num'
                                             else 'Instruction' if row['title'].lower().startswith('show')
                                             else 'Instruction' if row['title'].lower().startswith('- ')
                                             # All text which starts with upper case words should be added to instructions
@@ -176,6 +177,7 @@ def get_questionnaire(tree):
                                             else 'Response' if row['title'].lower().startswith('hours')
                                             else 'Standard' if 'ask all' in row['title']
                                             else row['source'], axis=1)
+    df.to_csv('title.csv', sep= ';')
 
     # assign code list group
     df['code_group'] = df['source_new'].ne(df['source_new'].shift()).cumsum()
@@ -587,78 +589,79 @@ def main():
     # manual fix SHOWCARD C2Qualc, split into two rows
     df.loc[-1] = [168, 'SHOWCARD C2', 0, 'Instruction', 100168 ]  # adding a row
     df = df.sort_values('new_sourceline')
+#    df['new_sourceline'] = df['new_sourceline'].astype('int64')
 
-    df.at[df['new_sourceline'] == 100169, 'title'] = 'Qualc'
-    df.at[df['new_sourceline'] == 100169, 'source'] = ' SectionNumber'
-    df.at[df['new_sourceline'] == 100170, 'source'] = 'Standard'
+    df.loc[df['new_sourceline'] == 100169, 'title'] = 'Qualc'
+    df.loc[df['new_sourceline'] == 100169, 'source'] = ' SectionNumber'
+    df.loc[df['new_sourceline'] == 100170, 'source'] = 'Standard'
 
-    df.at[df['new_sourceline'] == 102, 'title'] = '3. NHS/Health trust or other establishment providing nursing care'
+    df.loc[df['new_sourceline'] == 102, 'title'] = '3. NHS/Health trust or other establishment providing nursing care'
     df = df[df.new_sourceline != 103]
 
     # manual change: add "white", "mix" to the codelist string
-    df.at[df['new_sourceline'] == 254, 'title'] = '1. White: White - British'
-    df.at[df['new_sourceline'] == 255, 'title'] = '2. White: White - Irish'
-    df.at[df['new_sourceline'] == 256, 'title'] = '3. White: Any other White background (specify)'
+    df.loc[df['new_sourceline'] == 254, 'title'] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 255, 'title'] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 256, 'title'] = '3. White: Any other White background (specify)'
     df = df[df.new_sourceline != 251]
-    df.at[df['new_sourceline'] == 262, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.at[df['new_sourceline'] == 263, 'title'] = '5. Mixed: White and Black African'
-    df.at[df['new_sourceline'] == 264, 'title'] = '6. Mixed: White and Asian'
-    df.at[df['new_sourceline'] == 265, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df.loc[df['new_sourceline'] == 262, 'title'] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 263, 'title'] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 264, 'title'] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 265, 'title'] = '7. Mixed: Any other mixed background (specify)'
     df = df[df.new_sourceline != 258]
-    df.at[df['new_sourceline'] == 271, 'title'] = '8. Asian or Asian British: Indian'
-    df.at[df['new_sourceline'] == 272, 'title'] = '9. Asian or Asian British: Pakistani'
-    df.at[df['new_sourceline'] == 273, 'title'] = '10. Asian or Asian British: Bangladeshi'
-    df.at[df['new_sourceline'] == 274, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
+    df.loc[df['new_sourceline'] == 271, 'title'] = '8. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 272, 'title'] = '9. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 273, 'title'] = '10. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 274, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
     df = df[df.new_sourceline != 267]
-    df.at[df['new_sourceline'] == 280, 'title'] = '12. Black or Black British: Caribbean'
-    df.at[df['new_sourceline'] == 281, 'title'] = '13. Black or Black British: African'
-    df.at[df['new_sourceline'] == 282, 'title'] = '14. Black or Black British: Any other Black background (specify)'
+    df.loc[df['new_sourceline'] == 280, 'title'] = '12. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 281, 'title'] = '13. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 282, 'title'] = '14. Black or Black British: Any other Black background (specify)'
     df = df[df.new_sourceline != 276]
-    df.at[df['new_sourceline'] == 286, 'title'] = '15. Chinese'
-    df.at[df['new_sourceline'] == 287, 'title'] = '16. Any other (specify)'
+    df.loc[df['new_sourceline'] == 286, 'title'] = '15. Chinese'
+    df.loc[df['new_sourceline'] == 287, 'title'] = '16. Any other (specify)'
 
-    df.at[df['new_sourceline'] == 407, 'title'] = '1. White: White - British'
-    df.at[df['new_sourceline'] == 408, 'title'] = '2. White: White - Irish'
-    df.at[df['new_sourceline'] == 409, 'title'] = '3. White: Any other White background (specify)'
+    df.loc[df['new_sourceline'] == 407, 'title'] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 408, 'title'] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 409, 'title'] = '3. White: Any other White background (specify)'
     df = df[df.new_sourceline != 405]
-    df.at[df['new_sourceline'] == 413, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.at[df['new_sourceline'] == 414, 'title'] = '5. Mixed: White and Black African'
-    df.at[df['new_sourceline'] == 415, 'title'] = '6. Mixed: White and Asian'
-    df.at[df['new_sourceline'] == 416, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df.loc[df['new_sourceline'] == 413, 'title'] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 414, 'title'] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 415, 'title'] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 416, 'title'] = '7. Mixed: Any other mixed background (specify)'
     df = df[df.new_sourceline != 411]
-    df.at[df['new_sourceline'] == 420, 'title'] = '8. Asian or Asian British: Indian'
-    df.at[df['new_sourceline'] == 421, 'title'] = '9. Asian or Asian British: Pakistani'
-    df.at[df['new_sourceline'] == 422, 'title'] = '10. Asian or Asian British: Bangladeshi'
-    df.at[df['new_sourceline'] == 423, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
+    df.loc[df['new_sourceline'] == 420, 'title'] = '8. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 421, 'title'] = '9. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 422, 'title'] = '10. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 423, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
     df = df[df.new_sourceline != 418]
-    df.at[df['new_sourceline'] == 427, 'title'] = '12. Black or Black British: Caribbean'
-    df.at[df['new_sourceline'] == 428, 'title'] = '13. Black or Black British: African'
-    df.at[df['new_sourceline'] == 429, 'title'] = '14. Black or Black British: Any other Black background (specify)'
+    df.loc[df['new_sourceline'] == 427, 'title'] = '12. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 428, 'title'] = '13. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 429, 'title'] = '14. Black or Black British: Any other Black background (specify)'
     df = df[df.new_sourceline != 425]
-    df.at[df['new_sourceline'] == 433, 'title'] = '15. Chinese or Other ethnic group: Chinese'
-    df.at[df['new_sourceline'] == 434, 'title'] = '16. Chinese or Other ethnic group: Any other'
+    df.loc[df['new_sourceline'] == 433, 'title'] = '15. Chinese or Other ethnic group: Chinese'
+    df.loc[df['new_sourceline'] == 434, 'title'] = '16. Chinese or Other ethnic group: Any other'
     df = df[df.new_sourceline != 431]
 
-    df.at[df['new_sourceline'] == 101096, 'title'] = '1. White: White - British'
-    df.at[df['new_sourceline'] == 101097, 'title'] = '2. White: White - Irish'
-    df.at[df['new_sourceline'] == 101098, 'title'] = '3. White: Any other White background (specify)'
+    df.loc[df['new_sourceline'] == 101096, 'title'] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 101097, 'title'] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 101098, 'title'] = '3. White: Any other White background (specify)'
     df = df[df.new_sourceline != 101093]
-    df.at[df['new_sourceline'] == 101104, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.at[df['new_sourceline'] == 101105, 'title'] = '5. Mixed: White and Black African'
-    df.at[df['new_sourceline'] == 101106, 'title'] = '6. Mixed: White and Asian'
-    df.at[df['new_sourceline'] == 101107, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df.loc[df['new_sourceline'] == 101104, 'title'] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 101105, 'title'] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 101106, 'title'] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 101107, 'title'] = '7. Mixed: Any other mixed background (specify)'
     df = df[df.new_sourceline != 101100]
-    df.at[df['new_sourceline'] == 101113, 'title'] = '11. Asian or Asian British: Indian'
-    df.at[df['new_sourceline'] == 101114, 'title'] = '12. Asian or Asian British: Pakistani'
-    df.at[df['new_sourceline'] == 101115, 'title'] = '13. Asian or Asian British: Bangladeshi'
-    df.at[df['new_sourceline'] == 101116, 'title'] = '14. Asian or Asian British: Any other Asian background'
+    df.loc[df['new_sourceline'] == 101113, 'title'] = '11. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 101114, 'title'] = '12. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 101115, 'title'] = '13. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 101116, 'title'] = '14. Asian or Asian British: Any other Asian background'
     df = df[df.new_sourceline != 101109]
-    df.at[df['new_sourceline'] == 101122, 'title'] = '16. Black or Black British: Caribbean'
-    df.at[df['new_sourceline'] == 101123, 'title'] = '17. Black or Black British: African'
-    df.at[df['new_sourceline'] == 101124, 'title'] = '18. Black or Black British: Any other Black background (specify)'
+    df.loc[df['new_sourceline'] == 101122, 'title'] = '16. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 101123, 'title'] = '17. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 101124, 'title'] = '18. Black or Black British: Any other Black background (specify)'
     df = df[df.new_sourceline != 101118]
-    df.at[df['new_sourceline'] == 101128, 'title'] = '20. Chinese'
-    df.at[df['new_sourceline'] == 101129, 'title'] = '21. Any other'
+    df.loc[df['new_sourceline'] == 101128, 'title'] = '20. Chinese'
+    df.loc[df['new_sourceline'] == 101129, 'title'] = '21. Any other'
 
     df.loc[df['new_sourceline'] == 156, ['source']] = 'SectionNumber'
     df.loc[df['new_sourceline'] == 181, ['source']] = 'SectionNumber'
@@ -736,13 +739,12 @@ def main():
     # remove duplicated conditions.
     # If there are two conditions with the same text e.g. Extrat5 and Extrat6 can the second one be ignored and the questions inside it be added to the first condition instead?
     df = pd.concat([df.loc[df.source != 'Condition'],
-                           df.loc[df.source == 'Condition'].drop_duplicates(['title'],keep='first')]).sort_index()
-
+                    df.loc[(df.source == 'Condition') & (df.title.str.contains(r'ask all', case=False)) ],
+                    df.loc[(df.source == 'Condition') & (~ df.title.str.contains(r'ask all', na=False, case=False)) ].drop_duplicates(['title'],keep='first')]).sort_index()
 
     # condition end at the next <ask all>
     # 1. find all <ask all> locations
-    next_q = df.loc[(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']) )
-                     | ( df['source'] == 'SequenceNumber' ), 'new_sourceline'].to_list()
+    next_q = df.loc[(df['title'].str.contains(r'ask all', case=False)) | ( df['source'] == 'SequenceNumber' ), 'new_sourceline'].to_list()
     # print(next_q)
     df['condition_end'] = df.apply(lambda row: min( [y for y in next_q if y - row['new_sourceline'] > 0] )
                                                if (row['new_sourceline'] <  max(next_q) and row['source'] == 'Condition')
@@ -751,11 +753,10 @@ def main():
     df.to_csv('tmp_sourceline.csv', sep='\t')
 
     # remove {ask all}
-    df = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
-
+    df = df[~(df['title'].str.contains(r'ask all', case=False))]
 
     # rename duplicated question names
-    df['tmp'] = df.groupby('title').cumcount() 
+    df['tmp'] = df.groupby('title').cumcount()
     df['title_new'] = df.apply(lambda row: row['title'] + '_' + str(row['tmp']) if row['source'] == 'SectionNumber' else row['title'], axis=1)
     df['title_new'] = df['title_new'].str.replace('_0', '')
 
@@ -832,7 +833,9 @@ def main():
     # de-dup
     response_keep = ['Label', 'Type', 'Numeric_Type/Datetime_type', 'Min', 'Max']
     df_response_sub = df_response.loc[:, response_keep]
-    df_response_dedup = df_response_sub.drop_duplicates()
+    df_response_dedup1 = df_response_sub.drop_duplicates()
+
+    df_response_dedup = df_response_dedup1.drop_duplicates(subset=['Label'], keep='first')
 
     df_response_dedup.rename(columns={'Numeric_Type/Datetime_type': 'Type2'},
                              inplace=True)
