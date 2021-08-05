@@ -420,10 +420,12 @@ def get_conditions(df):
     """
     Build conditions table 
     """
-    df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title', 'condition_end']]
 
     # if can not parse (a=b), use the name of the NEXT question
-    df_conditions['next_question'] = df_conditions['questions'].shift(-1)
+    df.to_csv('TMP.csv',index=False,sep='\t')
+    df['next_question'] = df['questions'].shift(-1)
+    
+    df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title', 'condition_end', 'next_question']]
 
     df_conditions['Logic_name'] = df_conditions['title'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x) )
     df_conditions['Logic_name1'] = df_conditions['Logic_name'].apply(lambda x: '' if len(x) ==0 else x[0][0])
@@ -750,7 +752,7 @@ def main():
                                                if (row['new_sourceline'] <  max(next_q) and row['source'] == 'Condition')
                                                else None, axis=1)
 
-    df.to_csv('tmp_sourceline.csv', sep='\t')
+    #df.to_csv('tmp_sourceline.csv', sep='\t')
 
     # remove {ask all}
     df = df[~(df['title'].str.contains(r'ask all', case=False))]
