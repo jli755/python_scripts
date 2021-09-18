@@ -1,6 +1,6 @@
 #!/bin/env python3
 
-"""  
+"""
     Python 3
     Parse wave8 pdf file directly
 """
@@ -21,8 +21,8 @@ def rreplace(s, old, new, occurrence):
 def pdf_to_text(pdf_file, out_file, out_key):
     """
     input: pdf file, page number
-    output: 
-        - raw text 
+    output:
+        - raw text
         - key file contains section name, question name and if/loop
     """
     # TODO: quite possibly more
@@ -32,23 +32,49 @@ def pdf_to_text(pdf_file, out_file, out_key):
     prefixes.extend(['PELSLoop', 'Hist8loop', 'BENALOOP'])
 
     with pdfplumber.open(pdf_file) as pdf, open(out_file, 'w+') as f_out, open(out_key, 'w+') as k_out: 
-        for page in pdf.pages: 
-            text = page.extract_text() 
-            n = page.page_number 
-            new_text = rreplace(text, str(n), '', 1)
+        for page in pdf.pages:
+            text = page.extract_text()
+            n = page.page_number
+            new_text = rreplace(text, str(n), '', 1).strip()
             f_out.write(new_text)
 
             for line in new_text.splitlines():
+                # problem with line 583 or so | QI_Hist8_Date
+                # see "Hist8=1,2,3,6" in pdf
+                # hacked parsed output to add "| IF Hist8=..."
+                # Also two more IF couple lines below
+                # Also 599 no if
+                # 695 delete one line
+                # 746 del
+                # 762 del
+
+                if line.startswith('| Hist8='):
+                    line = line.replace('| Hist8=', '| IF Hist8=')
+                elif line.startswith('| Hist8<>'):
+                    line = line.replace('| Hist8<>', '| IF Hist8<>')
+                elif line.startswith('IF any(GROP5, 12, 14) OR GROP4=3 OR (any(Groa,-8,-9) and (GROP2 = 3 or'):
+                    line = 'IF any(GROP5, 12, 14) OR GROP4=3 OR (any(Groa,-8,-9) and (GROP2 = 3 or any(GROP3,12,14)))'
+                elif line.startswith('any(GROP3,12,14)))'):
+                    line = line.replace('any(GROP3,12,14)))', '')
+                elif line.startswith('IF any(NETP5,12,14) OR NETP4=3 OR (any(NETA,-8,-9) AND (NETP2=3 OR'):
+                    line = 'IF any(NETP5,12,14) OR NETP4=3 OR (any(NETA,-8,-9) AND (NETP2=3 OR any(NETP3,12,14)))'
+                elif line.startswith('any(NETP3,12,14)))'):
+                    line = line.replace('any(NETP3,12,14)))', '')
+                elif line.startswith('IF (NETA >= 0 or NAWB >= 0 or NAFB >= 0 or NAMB >= 0 or NAYB >= 0 or NAOB>= 0 or any(-'):
+                    line = 'IF (NETA >= 0 or NAWB >= 0 or NAFB >= 0 or NAMB >= 0 or NAYB >= 0 or NAOB>= 0 or any(-NAOB))'
+                elif line.startswith('NAOB))'):
+                    line = line.replace('NAOB))', '')
+
                 if not any(x in line for x in ['{', '..', 'COMPUTE:', 'IF LOOP', 'IF CRNOWMA = 1 OR 2']):
                     if line.startswith(tuple(prefixes)):
-                        k_out.write(line + '\n')
+                        k_out.write(line.strip() + '\n')
                     elif len(line.split()) == 1 and sum(1 for c in line if c.isupper()) > 2 :
-                        k_out.write(line + '\n')
+                        k_out.write(line.strip() + '\n')
                     elif any(x in line.split() for x in ['|', '||', '|||']):
                         if len(line.replace('|', '').split()) == 1 and sum(1 for c in line if c.isupper()) > 0:
-                            k_out.write(line + '\n')
+                            k_out.write(line.strip() + '\n')
                         elif line.replace('|', '').lstrip().startswith(tuple(prefixes)):
-                            k_out.write(line + '\n')
+                            k_out.write(line.strip() + '\n')
 
 
 def get_sequence(key_file, order_sequences):
@@ -64,7 +90,6 @@ def get_sequence(key_file, order_sequences):
         out_sequences.write('Label,Parent_name,Position\n')
 
         for num, line in enumerate(in_file, 1):
-                   
             if line.startswith(tuple(sequences)):
                 if line.startswith('MODULE'):
                     n = n + 1
@@ -97,7 +122,6 @@ def get_condition(key_file, order_condition, order_loop, order_question):
     # now in_file is a list
     in_file = content
     in_file.append("DUMMY LINE TO BE IGNORED FOR ZIP")
-    
 
     with open(order_condition, 'w+') as out_condition, open(order_loop, 'w+') as out_loop, open(order_question, 'w+') as out_question:
         out_condition.write('Label;Literal;above_label;parent_type;Position\n')
@@ -151,9 +175,11 @@ def get_condition(key_file, order_condition, order_loop, order_question):
             m = numberOfPipesAtStart(line)
             if m == depth:
                # normal in a loop
-               line = line.lstrip('| ')          
+               line = line.lstrip('| ')
             elif m > depth:
                print(num)
+               print(m)
+               print(depth)
                print(line)
                raise ValueError('something not right!')
             else:  # m < depth
@@ -164,7 +190,7 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                   depth = depth - 1
                   print(L)
                assert depth >= 0
-               line = line.lstrip('| ')          
+               line = line.lstrip('| ')
 
             if line.startswith('Section') or line.startswith('MODULE'):
                # depth unchanged but reset pos and new parent name
@@ -181,16 +207,8 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                print('='*78)
                continue  # TODO?  really?  output somewhere?
 
-            # problem with line 583 or so | QI_Hist8_Date 
-            # see "Hist8=1,2,3,6" in pdf
-            # hacked parsed output to add "| IF Hist8=..."
-            # Also two more IF couple lines below
-            # Also 599 no if
-            # 695 delete one line
-            # 746 del
-            # 762 del
 
-            elif line.startswith('IF'):
+            elif line.startswith('IF') :
                # line = line.encode("unicode_escape").decode()  # get rid of non-ascii in IF
                print(L)
                L[-1][0] += 1
@@ -239,54 +257,23 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                    out_loop.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip(), parent, parent_type, pos))
 
             else:  # Question
-               L[-1][0] += 1             
+               L[-1][0] += 1
                pos = L[-1][0]
                parent = L[-1][1]
-               label = line 
+               label = line
                if label in question_names:
                    label = label + '_' + str(i)
                    question_names.append(label)
                    i = i + 1
-                   print(label)
+                   # print(label)
                else:
                    label = label
                    question_names.append(label)
-                 
-                   
 
-               print('[d{}]{}: Q w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
+               # print('[d{}]{}: Q w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
                out_question.write('%s;%s;%4d\n' %(label, parent, pos))
 
-            # if line.startswith(tuple(sequences)):
-                
-            #     Label = 'c_' + pre_name
-            #     Literal = line.rstrip()
-            #     out_condition.write('%s;%s;%s;%4d\n' %(Label, Literal,current_parent,n))
-            #     parent_name = Label
 
-
-            # current_p = n
-            # pre_name = line.rstrip().replace('|','').lstrip()
-
-            
-            # if line.startswith('Section'):
-            #     n = 0
-            #     current_parent = line.rstrip()
-            #     L.append([0, current_parent])
-            #     #top_level = line.rstrip()
-
-            # if line.startswith('|'):
-            #     n = current_p
-            #     current_parent = top_level
-            #     top_level = pre_name
-
-            # else:
-            #     n = L[-1][0]               
-            #     n = n + 1
-            #     L[-1][0] = n
-            #     #top_level = pre_level
-
-          
 def get_question_item(question_item, order_question):
     """
         From question items and orders get the final db input temp file
@@ -300,7 +287,7 @@ def get_question_item(question_item, order_question):
 
     df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='inner', left_on='Name', right_on='new_name')
     df_QI.to_csv('TEMP.csv', sep = ';', index=False)
- 
+
     df_QI['code_name_old'] = 'cs_' + df_QI['Label_y']
     df_QI['code_name'] = df_QI['code_name_old'].map(lambda x: re.sub('(_\d+)$', '', x))
 
@@ -312,7 +299,7 @@ def get_question_item(question_item, order_question):
     df_QI_new = df_QI.loc[:, ['Label_y', 'Text', 'Response_domain', 'above_label', 'Position']]
     df_QI_new = df_QI_new.rename(columns={'Label_y': 'Label', 'Text': 'Literal'})
     df_QI_new['parent_type'] = df_QI_new['above_label'].apply(lambda x: 'CcSequence' if x.startswith('Section') else 'CcCondition' if x.startswith('c_IF') else 'CcLoop')   
-    
+
     return df_QI_new.drop_duplicates(subset=['Label', 'above_label', 'Position', 'parent_type'], keep="last")
 
 
@@ -328,7 +315,7 @@ def get_question_grid(question_grid, order_question):
     df_QG['parent_type'] = df_QG['above_label'].apply(lambda x: 'CcSequence' if x.startswith('Section') else 'CcCondition' if x.startswith('c_IF') else 'CcLoop')   
     return df_QG
 
-  
+
 def get_codes(codeslist, question_item, question_grid):
     """
         From question items and orders get the final db input temp file
@@ -338,7 +325,7 @@ def get_codes(codeslist, question_item, question_grid):
     df_QI = pd.read_csv(question_item, sep=',')
     df_QuestionItem_codes = pd.merge(df_QI.loc[df_QI['CodeListID'].notnull(), ['Name', 'CodeListID']], df_CO, how='left', left_on='CodeListID', right_on='CodeList_ID')
     df_QuestionItem_codes['Label'] = 'cs_' + df_QuestionItem_codes['Name']
-    
+
     df_QuestionItem_codes_keep = df_QuestionItem_codes.loc[:, ['Label', 'Category', 'Value', 'codes_order']]
     # TODO
     # df_QuestionItem_codes_keep['Codes_Order'] = df_QuestionItem_codes_keep.groupby('Label').cumcount() + 1
@@ -359,7 +346,7 @@ def get_codes(codeslist, question_item, question_grid):
 def get_code_list_from_questionpair(txt_file, question_1, question_2, debug=False):
     with open(txt_file, 'r') as content_file:
         content = content_file.read()
-       
+
     #question_1 = 'REHB'
     #question_2 = 'REGR'
 
@@ -403,7 +390,7 @@ def get_code_list_from_questionpair(txt_file, question_1, question_2, debug=Fals
 def get_code_list_from_questionpair_nogridcol(txt_file, question_1, question_2, debug=False):
     with open(txt_file, 'r') as content_file:
         content = content_file.read()
-       
+
     #question_1 = 'REHB'
     #question_2 = 'REGR'
 
@@ -442,18 +429,18 @@ def generate_code_list(txt_file, question_file, output_code):
         # this line is for the question grid
         out_code.write('-;1;-;1\n')
 
-        for i in range(0, len(L)-1): 
-            #print("="*80) 
-            #print("{}: {}..{}".format(i, L[i], L[i+1])) 
+        for i in range(0, len(L)-1):
+            #print("="*80)
+            #print("{}: {}..{}".format(i, L[i], L[i+1]))
             #if 'HusbandWifePartnepirrTextInsert' in L[i]:
             if True:
-                end_with_number = re.search(r'\d+', L[i+1]) 
+                end_with_number = re.search(r'\d+', L[i+1])
                 second = re.sub('(_\d+)$', '', L[i+1])
                 if end_with_number is not None and second in L:
                     c = g(txt_file, L[i], second)
-                else:                 
+                else:
                     c = g(txt_file, L[i], L[i+1])
-                #print("{}: {}: {}".format(i, L[i], c)) 
+                #print("{}: {}: {}".format(i, L[i], c))
                 if len(c) == 2:
                     name = "cs_{}".format(L[i])
                     assert c[0] == 'REGULAR'
@@ -485,15 +472,14 @@ def generate_code_list(txt_file, question_file, output_code):
                 else:
                     print(c)
                     raise ValueError("unexpected return")
-      
+
+
 def main():
     base_dir = '../LSYPE1/wave8-xml/pdf'
     wave8_pdf = os.path.join(base_dir, 'wave8.pdf')
     out_file = os.path.join(base_dir, 'wave8_all_pages.txt')
     key_file = os.path.join(base_dir, 'wave8_all_keys.txt')
-    #order_question = os.path.join(base_dir, 'wave8_order_question.csv')
-    order_question = "bar.csv"
-    
+    order_question = os.path.join(base_dir, 'wave8_order_question.csv')
 
     db_input_dir = '../LSYPE1/wave8-xml/db_temp_input'
     order_sequences = os.path.join(db_input_dir, 'wave8_sequences.csv')
@@ -501,7 +487,7 @@ def main():
     order_loop = os.path.join(db_input_dir, 'wave8_order_loop.csv')
 
     # pdf to text
-    #pdf_to_text(wave8_pdf, out_file, key_file)
+    pdf_to_text(wave8_pdf, out_file, key_file)
 
     # produce sequence input file
     get_sequence(key_file, order_sequences)
@@ -515,7 +501,7 @@ def main():
     df_question_grid = get_question_grid('../LSYPE1/wave8-xml/db_input/QuestionGrid.csv', order_question)
     df_question_item.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
     df_question_grid.to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
-  
+
     # df_codelist = get_codes('../LSYPE1/wave8-xml/db_input/CodeList.csv', '../LSYPE1/wave8-xml/db_input/QuestionItem.csv',  '../LSYPE1/wave8-xml/db_input/QuestionGrid.csv')
     # df_codelist.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), index=False)   
 
@@ -523,6 +509,7 @@ def main():
     generate_code_list(os.path.join(base_dir, 'wave8_all_pages.txt'),
                        os.path.join(base_dir, 'wave8_order_question.csv'),
                        os.path.join(db_input_dir, 'wave8_codes.csv'))
+
 
 if __name__ == "__main__":
     main()

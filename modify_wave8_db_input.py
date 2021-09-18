@@ -2,7 +2,9 @@
 
 """  
     Python 3
-    Parse wave8 pdf file directly
+    Modify the output from parse_wave8_pdf.py 
+        - input dir: '../LSYPE1/wave8-xml/db_temp_input'
+        - output dir = '../LSYPE1/wave8-xml/db_input_modified' 
 """
 
 from collections import OrderedDict
