@@ -11,12 +11,54 @@ import pdfplumber
 import re
 import os
 
+
+def do_replace(s, d):
+    """
+    replace key with value from a dictionary
+    """
+    for k, v in d.items():
+        # print((k,))
+        s = s.replace(k, v)
+    return s
+
+
+def QuestionTextInsert(out_file, out_key, out_key_modified):
+    """
+    modify out_file and out_key from pdf_to_text function
+
+    QuestionTextInsert:
+        - replace all #*QuestionTextInsert part with it's actual text
+    """
+    with open(out_file, 'r') as file:
+        out_file_text = file.read()
+
+    # generate dictionary for question text intsert
+    #                    no hash
+    #                                                      at least one (nonpipe or nonwhite)
+    l = re.findall('(\|*[^\#\s]*QuestionTextInsert.*)\n((?:\|*.*[^\|\s].*\n)+)\|*\s*\n', out_file_text)
+
+    text_dict = {}
+    for item in l:
+        k = item[0].replace('|', '').strip()
+        v = 'TextInsert: ' + item[1].replace('|', '').strip()
+        text_dict[k] = v
+
+    # remove *QuestionTextInsert from key file
+    with open(out_key, 'r') as in_f, open(out_key_modified, 'w') as out_f:
+        for line in in_f:
+            if not line.replace('|', '').strip() in text_dict.keys():
+                out_f.write(line)
+
+    return text_dict
+
+
 def rreplace(s, old, new, occurrence):
-   """
-   Reverse replace string
-   """
-   li = s.rsplit(old, occurrence)
-   return new.join(li)
+    """
+    Reverse replace string
+    """
+    li = s.rsplit(old, occurrence)
+    return new.join(li)
+
 
 def pdf_to_text(pdf_file, out_file, out_key):
     """
@@ -31,11 +73,17 @@ def pdf_to_text(pdf_file, out_file, out_key):
     # TODO: these ones have an if before them
     prefixes.extend(['PELSLoop', 'Hist8loop', 'BENALOOP'])
 
-    with pdfplumber.open(pdf_file) as pdf, open(out_file, 'w+') as f_out, open(out_key, 'w+') as k_out: 
+    with pdfplumber.open(pdf_file) as pdf, open(out_file, 'w+') as f_out, open(out_key, 'w+') as k_out:
         for page in pdf.pages:
             text = page.extract_text()
+
+            # remove page number
             n = page.page_number
-            new_text = rreplace(text, str(n), '', 1).strip()
+            # manually fix change to new page
+            if n in (27, 71, 83, 89, 112, 121, 147, 182):
+               new_text = rreplace(text, str(n), '', 1).strip() + '\n'
+            else:
+                new_text = rreplace(text, str(n), ' \n', 1)
             f_out.write(new_text)
 
             for line in new_text.splitlines():
@@ -312,7 +360,7 @@ def get_question_grid(question_grid, order_question):
     df_QG = pd.merge(df_question_grid, df_order, how='inner', left_on='Label', right_on='Label')
 
     df_QG.drop(['vertical_code_list_id', 'horizontal_code_list_id'], axis=1, inplace=True)
-    df_QG['parent_type'] = df_QG['above_label'].apply(lambda x: 'CcSequence' if x.startswith('Section') else 'CcCondition' if x.startswith('c_IF') else 'CcLoop')   
+    df_QG['parent_type'] = df_QG['above_label'].apply(lambda x: 'CcSequence' if x.startswith('Section') else 'CcCondition' if x.startswith('c_IF') else 'CcLoop')
     return df_QG
 
 
@@ -386,7 +434,6 @@ def get_code_list_from_questionpair(txt_file, question_1, question_2, debug=Fals
         #raise ValueError("too many GRID COLS")
 
 
-
 def get_code_list_from_questionpair_nogridcol(txt_file, question_1, question_2, debug=False):
     with open(txt_file, 'r') as content_file:
         content = content_file.read()
@@ -415,6 +462,7 @@ def get_code_list_from_questionpair_nogridcol(txt_file, question_1, question_2, 
     #codes = [codes.group(i) for i in range(0, len(codes))]
     #print(codes)
     return codesget_code_list_from_questionpair
+
 
 def generate_code_list(txt_file, question_file, output_code):
     df = pd.read_csv(question_file, sep=';')
@@ -475,6 +523,7 @@ def generate_code_list(txt_file, question_file, output_code):
 
 
 def main():
+# if True:
     base_dir = '../LSYPE1/wave8-xml/pdf'
     wave8_pdf = os.path.join(base_dir, 'wave8.pdf')
     out_file = os.path.join(base_dir, 'wave8_all_pages.txt')
@@ -489,21 +538,35 @@ def main():
     # pdf to text
     pdf_to_text(wave8_pdf, out_file, key_file)
 
+    # remove question text insert from key file
+    key_file_modify = os.path.join(base_dir, 'wave8_all_keys_modify.txt')
+    text_insert_dict = QuestionTextInsert(out_file, key_file, key_file_modify)
+
+    # import json
+    # # Serialize data into file:
+    # json.dump( text_insert_dict, open( os.path.join(base_dir, 'question_text_insert.json'), 'w' ), indent=2 )
+    # # print(text_insert_dict['CRDIVORQuestionTextInsert'])
+
     # produce sequence input file
-    get_sequence(key_file, order_sequences)
+    get_sequence(key_file_modify, order_sequences)
 
     # produce condition file
-    get_condition(key_file, order_condition, order_loop, order_question)
+    get_condition(key_file_modify, order_condition, order_loop, order_question)
 
     # gather all information for db input
-
     df_question_item = get_question_item('../LSYPE1/wave8-xml/db_input/QuestionItem.csv', order_question)
     df_question_grid = get_question_grid('../LSYPE1/wave8-xml/db_input/QuestionGrid.csv', order_question)
+
+    # replace *QuestionTextInsert using question text dictionary
+    df_question_item['Literal_new'] = df_question_item['Literal'].apply(lambda x: do_replace(x, text_insert_dict) if not pd.isnull(x) else x)
+    df_question_item['Literal'] = df_question_item['Literal_new']
+    df_question_item = df_question_item.drop('Literal_new', 1)
+
     df_question_item.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
     df_question_grid.to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
 
     # df_codelist = get_codes('../LSYPE1/wave8-xml/db_input/CodeList.csv', '../LSYPE1/wave8-xml/db_input/QuestionItem.csv',  '../LSYPE1/wave8-xml/db_input/QuestionGrid.csv')
-    # df_codelist.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), index=False)   
+    # df_codelist.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), index=False)
 
     #get_code_list(os.path.join(base_dir, 'wave8_all_pages.txt'), 'temp.txt')
     generate_code_list(os.path.join(base_dir, 'wave8_all_pages.txt'),
@@ -513,3 +576,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
