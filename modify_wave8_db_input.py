@@ -1,10 +1,10 @@
 #!/bin/env python3
 
-"""  
+"""
     Python 3
-    Modify the output from parse_wave8_pdf.py 
+    Modify the output from parse_wave8_pdf.py
         - input dir: '../LSYPE1/wave8-xml/db_temp_input'
-        - output dir = '../LSYPE1/wave8-xml/db_input_modified' 
+        - output dir = '../LSYPE1/wave8-xml/db_input_modified'
 """
 
 from collections import OrderedDict
@@ -51,10 +51,13 @@ def modify_condition(old_file, new_file):
     """
     df = pd.read_csv(old_file, sep=';')
 
-    df['Logic'] = df['Literal'].apply(lambda x: x[3:])
+    # FieldSerial isn't a question in the questionnaire, and so it won't have any logic.
+
+    df['Logic'] = df['Literal'].apply(lambda x: x[3:] if x != "IF FieldSerial <> ’’" else '')
     df['Logic'] = df['Logic'].str.replace('=', ' == ').str.replace('<>', ' != ').str.replace(' OR ', ' || ').str.replace(' or ', ' || ').str.replace(' AND ', ' && ').str.replace(' and ', ' && ')
 
     df['Logic_name'] = df['Literal'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x)) 
+
     df['Logic_name1'] = df['Logic_name'].apply(lambda x: '' if len(x) ==0 else x[0][0])
 
     # rename duplicates logic names
@@ -89,11 +92,11 @@ def modify_condition(old_file, new_file):
 def main():
     old_dir = '../LSYPE1/wave8-xml/db_temp_input'
     new_dir = '../LSYPE1/wave8-xml/db_input_modified'
-   
+
     if not os.path.exists(new_dir):
         os.makedirs(new_dir)
 
-    # code list lable 
+    # code list lable
     df_code = pd.read_csv(os.path.join(old_dir, 'wave8_codes.csv'), sep=';')
     # code dict
     df_code['Label_new'] = df_code['Label'].str.replace('&', '_').str.replace('.', '').str.replace(':', '').str.replace(')', '_').str.replace('<>', '_')
@@ -103,7 +106,7 @@ def main():
 
     codecols = ['Label', 'Value', 'Category', 'codes_order']
     df_code[codecols].to_csv(os.path.join(new_dir, 'wave8_codes.csv'), index=False, sep=';')
-    
+
     # condition Label
     condition_dict = modify_condition(os.path.join(old_dir, 'wave8_condition.csv'), os.path.join(new_dir, 'wave8_condition_inter.csv'))
     #print(condition_dict)
@@ -129,7 +132,7 @@ def main():
 
     loopcols = ['Label', 'Variable', 'Start_Value', 'End_Value', 'Loop_While', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
     df_loop[loopcols].to_csv(os.path.join(new_dir, 'wave8_order_loop.csv'), index=False, sep=';')
-    
+
     # question item
     df_QI = pd.read_csv(os.path.join(old_dir, 'wave8_question_item.csv'), sep=';')
     df_QI['Literal'].fillna('?', inplace=True)
@@ -147,7 +150,6 @@ def main():
     QIcols = ['Label', 'Literal', 'Response_domain', 'above_label', 'Position', 'parent_type']
 
     df_QI[QIcols].to_csv(os.path.join(new_dir, 'wave8_question_item.csv'), index=False, sep=';')
-    
 
     # question grid
     df_QG = pd.read_csv(os.path.join(old_dir, 'wave8_question_grid.csv'), sep='@')
@@ -169,13 +171,13 @@ def main():
     df_QG = df_QG.drop(['above_label', 'Label', 'above_label_new'], 1)
     df_QG.rename(columns={'Label_new': 'Label', 'above_label_new1': 'above_label'}, inplace=True)
 
-    df_QG['Literal'].fillna('?', inplace=True)    
+    df_QG['Literal'].fillna('?', inplace=True)
     df_QG['Literal'] = df_QG['Literal'].apply(lambda x: re.sub(r'<.*?>', ' ', x))
 
     QGcols = ['Label', 'Literal', 'horizontal_code_list_name', 'vertical_code_list_name', 'above_label', 'Position', 'parent_type']
 
     df_QG[QGcols].to_csv(os.path.join(new_dir, 'wave8_question_grid.csv'), index=False, sep='@')
-    
+
 
 
     # condition file needs to modify parent with loop_dict
@@ -184,9 +186,6 @@ def main():
     cols = ['Label', 'Literal', 'Logic', 'above_label', 'parent_type', 'Position']
     df_condition[cols].to_csv(os.path.join(new_dir, 'wave8_condition.csv'), index=False, sep=';')
 
-
-
-   
     os.system('cp ../LSYPE1/wave8-xml/db_temp_input/wave8_sequences.csv ../LSYPE1/wave8-xml/db_input_modified/wave8_sequences.csv') 
 
 
