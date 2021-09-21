@@ -43,6 +43,9 @@ def QuestionTextInsert(out_file, out_key, out_key_modified):
         v = 'TextInsert: ' + item[1].replace('|', '').strip()
         text_dict[k] = v
 
+    # other insert names
+    insert_name = re.findall('\{(\#.*nsert.*)\}', out_file_text)
+
     # remove *QuestionTextInsert from key file
     with open(out_key, 'r') as in_f, open(out_key_modified, 'w') as out_f:
         for line in in_f:
@@ -80,7 +83,7 @@ def pdf_to_text(pdf_file, out_file, out_key):
             # remove page number
             n = page.page_number
             # manually fix change to new page
-            if n in (27, 71, 83, 89, 112, 121, 147, 182):
+            if n in (27, 71, 83, 89, 112, 121, 147, 182, 46):
                new_text = rreplace(text, str(n), '', 1).strip() + '\n'
             else:
                 new_text = rreplace(text, str(n), ' \n', 1)
@@ -95,6 +98,7 @@ def pdf_to_text(pdf_file, out_file, out_key):
                 # 695 delete one line
                 # 746 del
                 # 762 del
+                # | Credit. -> join above line
 
                 if line.startswith('| Hist8='):
                     line = line.replace('| Hist8=', '| IF Hist8=')
@@ -112,14 +116,19 @@ def pdf_to_text(pdf_file, out_file, out_key):
                     line = 'IF (NETA >= 0 or NAWB >= 0 or NAFB >= 0 or NAMB >= 0 or NAYB >= 0 or NAOB>= 0 or any(-NAOB))'
                 elif line.startswith('NAOB))'):
                     line = line.replace('NAOB))', '')
+                elif line.startswith('| Tax Credit: Include Working Tax Credit, including Disabled Person’s Tax Credit, Child Tax'):
+                    line = '| Tax Credit: Include Working Tax Credit, including Disabled Person’s Tax Credit, Child Tax Credit.'
+                elif line.startswith('| Credit.'):
+                    line = line.replace('| Credit.', '')
 
-                if not any(x in line for x in ['{', '..', 'COMPUTE:', 'IF LOOP', 'IF CRNOWMA = 1 OR 2']):
+                if not any(x in line for x in ['{', '..', 'COMPUTE:', 'IF LOOP', 'IF CRNOWMA = 1 OR 2', 'Dummy', 'DUMMY', '?', 'Content', 'Never', 'Always']):
+
                     if line.startswith(tuple(prefixes)):
                         k_out.write(line.strip() + '\n')
-                    elif len(line.split()) == 1 and sum(1 for c in line if c.isupper()) > 2 :
+                    elif len(line.split()) == 1 and sum(1 for c in line if c.isupper()) > 0 :
                         k_out.write(line.strip() + '\n')
                     elif any(x in line.split() for x in ['|', '||', '|||']):
-                        if len(line.replace('|', '').split()) == 1 and sum(1 for c in line if c.isupper()) > 0:
+                        if len(line.replace('|', '').split()) == 1 and sum(1 for c in line if c.isupper()) > 1:
                             k_out.write(line.strip() + '\n')
                         elif line.replace('|', '').lstrip().startswith(tuple(prefixes)):
                             k_out.write(line.strip() + '\n')
@@ -169,11 +178,186 @@ def get_condition(key_file, order_condition, order_loop, order_question):
         content = in_file.readlines()
     # now in_file is a list
     in_file = content
-    in_file.append("DUMMY LINE TO BE IGNORED FOR ZIP")
+    in_file.append("ADD DUMMY LINE TO BE IGNORED FOR ZIP")
 
     with open(order_condition, 'w+') as out_condition, open(order_loop, 'w+') as out_loop, open(order_question, 'w+') as out_question:
         out_condition.write('Label;Literal;above_label;parent_type;Position\n')
         out_loop.write('Label;Loop_While;above_label;parent_type;Position\n')
+        out_question.write('Label;above_label;Position\n')
+
+        L = []
+        depth = 0
+        #for num, line in enumerate(in_file, 1):
+        # Sometimes want nextline as well
+        for num, (line, nextline) in enumerate(zip(in_file, in_file[1:]), 1):
+            line = line.rstrip()
+            if num == 1:
+                # print(line)
+                assert line.startswith("MODULE")
+                modname = line.lstrip("MODULE")
+                # TODO hardcoded for now
+                modname = line.lstrip("1: ")
+                L.append([0, modname])
+                continue
+
+
+            def startsWithNPipes(s, n):
+                return s.count('|') == n and line[0:n] == '|'*n
+
+            def numberOfPipesAtStart(s):
+                n = 0
+                for j in range(0, len(s)):
+                   if s[j] == '|':
+                       n += 1
+                   else:
+                       return n
+
+            # funny hack b/c sections can be inside loops but are not marked so
+            # so we check the next line too
+            if line.startswith('Section'):
+                # print("="*78)
+                # print("We are {} deep, found a section, might hack...".format(depth))
+                # print(L)
+                # print(line)
+                # print(nextline)
+                #if startsWithNPipes(nextline, depth):
+                if nextline.startswith('|'):  # any number of pipes
+                    # print("we think this is a nested section")
+                    tmp = numberOfPipesAtStart(nextline)
+                    # print("the line after as {0} pipes so hacking {0} pipes onto the section".format(tmp))
+                    line = '|'*tmp + line
+                else:
+                    print("no we are not hacking this section, not nested")
+                # print("="*78)
+
+            m = numberOfPipesAtStart(line)
+            if m == depth:
+               # normal in a loop
+               line = line.lstrip('| ')
+            elif m > depth:
+               # print(num)
+               # print(m)
+               # print(depth)
+               # print(line)
+               raise ValueError('something not right!')
+            else:  # m < depth
+               # above not true, multiple if/loops count end
+               for j in range(0, depth - m):
+                  b = L.pop()
+                  # print('d{}]{}: conditional ended: "{}" back to "{}"'.format(depth, num, b[1], L[-1][1]))
+                  depth = depth - 1
+                  # print(L)
+               assert depth >= 0
+               line = line.lstrip('| ')
+
+            if line.startswith('Section') or line.startswith('MODULE'):
+               # depth unchanged but reset pos and new parent name
+               # print('='*78)
+               if line.startswith('Section 8.13'):
+                   print(depth)
+                   #print(m)
+                   #print(numberOfPipesAtStart(line))
+                   #print(line)
+               # print(L)
+               L[-1] = [0, line]
+               #if line.startswith('Section 8.13'):
+               # print(L)
+               # print('='*78)
+               continue  # TODO?  really?  output somewhere?
+
+
+            elif line.startswith('IF') :
+               # line = line.encode("unicode_escape").decode()  # get rid of non-ascii in IF
+
+               L[-1][0] += 1
+               pos = L[-1][0]
+               parent = L[-1][1]
+               # print(L)
+               if line.startswith('IF FieldSerial'):
+                   print(("***", line, parent))
+               global_loop += 1
+               label = 'c_IF_{}'.format(global_loop)
+               #label = line.lstrip('IF ')])
+               depth = depth + 1
+               L.append([0, label])
+               # TODO: output
+               #print('[d{}]{}: IF w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
+               if parent.startswith('Section') or parent.startswith('MODULE'):
+                   parent_type = 'CcSequence'
+               elif parent.startswith('c_IF'):
+                   parent_type = 'CcCondition'
+               elif parent.startswith('l_'):
+                   parent_type = 'CcLoop'
+               else:
+                   parent_type = 'other'
+
+               out_condition.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip().replace('"', ''), parent, parent_type, pos))
+
+            elif 'loop' in line.split()[0].lower():  # .endswith not enough
+                L[-1][0] += 1
+                pos = L[-1][0]
+                parent = L[-1][1]
+                global_loop += 1
+                label = 'l_{}'.format(line.split()[0])
+                depth = depth + 1
+                L.append([0, label])
+                # TODO: output
+                # print('[d{}]{}: LOOP w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
+                if parent.startswith('Section') or parent.startswith('MODULE'):
+                    parent_type = 'CcSequence'
+                elif parent.startswith('c_IF'):
+                    parent_type = 'CcCondition'
+                elif parent.startswith('l_'):
+                    parent_type = 'CcLoop'
+                else:
+                    parent_type = 'other'
+
+                if ('End' not in line) and (line.rstrip() !='BENALOOP'):
+                    out_loop.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip(), parent, parent_type, pos))
+
+            else:  # Question
+                L[-1][0] += 1
+                pos = L[-1][0]
+                parent = L[-1][1]
+                label = line
+                if label in question_names:
+                    label = label + '_' + str(i)
+                    question_names.append(label)
+                    i = i + 1
+                    # print(label)
+                else:
+                    label = label
+                    question_names.append(label)
+
+                if 'COPA' in line:
+                    print("@@@@@@@@@@@@")
+                    print(line)
+                    print('[d{}]{}: Q w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
+                out_question.write('%s;%s;%4d\n' %(label, parent, pos))
+
+
+# need a hack to get code list between current question and next question
+def get_condition_2(key_file, order_question):
+    """
+    input: key file contains 'IF'
+    output: ordered condition file with parent name and relative order
+    """
+    current_p = 0
+    current_parent = ''
+    global_loop = 0
+    pre_name = ''
+    i = 0
+    question_names = []
+    sequences = ['IF', '| IF', '|| IF', '||| IF']
+
+    # get the whole input as a list (so we can zip it later)
+    with open(key_file) as in_file:
+        content = in_file.readlines()
+    # now in_file is a list
+    in_file = content
+    in_file.append("ADD DUMMY LINE TO BE IGNORED FOR ZIP")
+
+    with open(order_question, 'w+') as out_question:
         out_question.write('Label;above_label;Position\n')
 
         L = []
@@ -205,64 +389,64 @@ def get_condition(key_file, order_condition, order_loop, order_question):
             # funny hack b/c sections can be inside loops but are not marked so
             # so we check the next line too
             if line.startswith('Section'):
-                print("="*78)
-                print("We are {} deep, found a section, might hack...".format(depth))
-                print(L)
-                print(line)
-                print(nextline)
+                # print("="*78)
+                # print("We are {} deep, found a section, might hack...".format(depth))
+                # print(L)
+                # print(line)
+                # print(nextline)
                 #if startsWithNPipes(nextline, depth):
                 if nextline.startswith('|'):  # any number of pipes
-                    print("we think this is a nested section")
+                    # print("we think this is a nested section")
                     tmp = numberOfPipesAtStart(nextline)
-                    print("the line after as {0} pipes so hacking {0} pipes onto the section".format(tmp))
+                    # print("the line after as {0} pipes so hacking {0} pipes onto the section".format(tmp))
                     line = '|'*tmp + line
                 else:
                     print("no we are not hacking this section, not nested")
-                print("="*78)
+                # print("="*78)
 
             m = numberOfPipesAtStart(line)
             if m == depth:
                # normal in a loop
                line = line.lstrip('| ')
             elif m > depth:
-               print(num)
-               print(m)
-               print(depth)
-               print(line)
+               # print(num)
+               # print(m)
+               # print(depth)
+               # print(line)
                raise ValueError('something not right!')
             else:  # m < depth
                # above not true, multiple if/loops count end
                for j in range(0, depth - m):
                   b = L.pop()
-                  print('d{}]{}: conditional ended: "{}" back to "{}"'.format(depth, num, b[1], L[-1][1]))
+                  # print('d{}]{}: conditional ended: "{}" back to "{}"'.format(depth, num, b[1], L[-1][1]))
                   depth = depth - 1
-                  print(L)
+                  # print(L)
                assert depth >= 0
                line = line.lstrip('| ')
 
             if line.startswith('Section') or line.startswith('MODULE'):
                # depth unchanged but reset pos and new parent name
-               print('='*78)
+               # print('='*78)
                if line.startswith('Section 8.13'):
                    print(depth)
-                   print(m)
-                   print(numberOfPipesAtStart(line))
-                   print(line)
-               print(L)
+                   # print(m)
+                   # print(numberOfPipesAtStart(line))
+                   # print(line)
+               # print(L)
                L[-1] = [0, line]
                #if line.startswith('Section 8.13'):
-               print(L)
-               print('='*78)
+               # print(L)
+               # print('='*78)
                continue  # TODO?  really?  output somewhere?
 
 
             elif line.startswith('IF') :
                # line = line.encode("unicode_escape").decode()  # get rid of non-ascii in IF
-               print(L)
+               # print(L)
                L[-1][0] += 1
                pos = L[-1][0]
                parent = L[-1][1]
-               print(L)
+               # print(L)
                if line.startswith('IF FieldSerial'):
                    print(("***", line, parent))
                global_loop += 1
@@ -280,7 +464,7 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                    parent_type = 'CcLoop'
                else:
                    parent_type = 'other'
-               out_condition.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip().replace('"', ''), parent, parent_type, pos))
+               # out_condition.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip().replace('"', ''), parent, parent_type, pos))
 
             elif 'loop' in line.split()[0].lower():  # .endswith not enough
                L[-1][0] += 1
@@ -291,7 +475,7 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                depth = depth + 1
                L.append([0, label])
                # TODO: output
-               print('[d{}]{}: LOOP w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
+               # print('[d{}]{}: LOOP w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
                if parent.startswith('Section') or parent.startswith('MODULE'):
                    parent_type = 'CcSequence'
                elif parent.startswith('c_IF'):
@@ -301,10 +485,11 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                else:
                    parent_type = 'other'
 
-               if ('End' not in line) and (line.rstrip() !='BENALOOP'):
-                   out_loop.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip(), parent, parent_type, pos))
+               # if ('End' not in line) and (line.rstrip() !='BENALOOP'):
+               #     out_loop.write('%s;%s;%s;%s;%4d\n' %(label,line.rstrip(), parent, parent_type, pos))
 
             else:  # Question
+
                L[-1][0] += 1
                pos = L[-1][0]
                parent = L[-1][1]
@@ -441,7 +626,6 @@ def get_code_list_from_questionpair_nogridcol(txt_file, question_1, question_2, 
     #question_1 = 'REHB'
     #question_2 = 'REGR'
 
-
     result = re.findall('%s\s*\n(.*?)%s\s*\n' % (question_1, question_2), content, re.DOTALL)
     if not result:
         return []
@@ -469,7 +653,7 @@ def generate_code_list(txt_file, question_file, output_code):
     L = question_name_list = df['Label']
     g = get_code_list_from_questionpair
 
-    print("="*80)
+    # print("="*80)
 
 
     with open(output_code, 'w+') as out_code:
@@ -478,8 +662,8 @@ def generate_code_list(txt_file, question_file, output_code):
         out_code.write('-;1;-;1\n')
 
         for i in range(0, len(L)-1):
-            #print("="*80)
-            #print("{}: {}..{}".format(i, L[i], L[i+1]))
+            # print("="*80)
+            # print("{}: {}..{}".format(i, L[i], L[i+1]))
             #if 'HusbandWifePartnepirrTextInsert' in L[i]:
             if True:
                 end_with_number = re.search(r'\d+', L[i+1])
@@ -488,7 +672,7 @@ def generate_code_list(txt_file, question_file, output_code):
                     c = g(txt_file, L[i], second)
                 else:
                     c = g(txt_file, L[i], L[i+1])
-                #print("{}: {}: {}".format(i, L[i], c))
+                # print("{}: {}: {}".format(i, L[i], c))
                 if len(c) == 2:
                     name = "cs_{}".format(L[i])
                     assert c[0] == 'REGULAR'
@@ -529,13 +713,14 @@ def main():
     out_file = os.path.join(base_dir, 'wave8_all_pages.txt')
     key_file = os.path.join(base_dir, 'wave8_all_keys.txt')
     order_question = os.path.join(base_dir, 'wave8_order_question.csv')
+    order_question_2 = os.path.join(base_dir, 'wave8_order_question_2.csv')
 
     db_input_dir = '../LSYPE1/wave8-xml/db_temp_input'
     order_sequences = os.path.join(db_input_dir, 'wave8_sequences.csv')
     order_condition = os.path.join(db_input_dir, 'wave8_condition.csv')
     order_loop = os.path.join(db_input_dir, 'wave8_order_loop.csv')
 
-    # pdf to text
+    # pdf to textgenerate_code_list
     pdf_to_text(wave8_pdf, out_file, key_file)
 
     # remove question text insert from key file
@@ -553,6 +738,8 @@ def main():
     # produce condition file
     get_condition(key_file_modify, order_condition, order_loop, order_question)
 
+    get_condition_2(key_file, order_question_2)
+
     # gather all information for db input
     df_question_item = get_question_item('../LSYPE1/wave8-xml/db_input/QuestionItem.csv', order_question)
     df_question_grid = get_question_grid('../LSYPE1/wave8-xml/db_input/QuestionGrid.csv', order_question)
@@ -565,14 +752,13 @@ def main():
     df_question_item.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
     df_question_grid.to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
 
-    # df_codelist = get_codes('../LSYPE1/wave8-xml/db_input/CodeList.csv', '../LSYPE1/wave8-xml/db_input/QuestionItem.csv',  '../LSYPE1/wave8-xml/db_input/QuestionGrid.csv')
-    # df_codelist.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), index=False)
+    generate_code_list(out_file,
+                       order_question_2,
+                       os.path.join(db_input_dir, 'codes.csv'))
 
-    #get_code_list(os.path.join(base_dir, 'wave8_all_pages.txt'), 'temp.txt')
-    generate_code_list(os.path.join(base_dir, 'wave8_all_pages.txt'),
-                       os.path.join(base_dir, 'wave8_order_question.csv'),
-                       os.path.join(db_input_dir, 'wave8_codes.csv'))
-
+    df_codes = pd.read_csv(os.path.join(db_input_dir, 'codes.csv'), sep=';')
+    df_codes_sub = df_codes[~df_codes['Label'].isin(['cs_' + i for i in text_insert_dict.keys()])]
+    df_codes_sub.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), sep=';', index=False)
 
 if __name__ == "__main__":
     main()
