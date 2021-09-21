@@ -329,10 +329,6 @@ def get_condition(key_file, order_condition, order_loop, order_question):
                     label = label
                     question_names.append(label)
 
-                if 'COPA' in line:
-                    print("@@@@@@@@@@@@")
-                    print(line)
-                    print('[d{}]{}: Q w/ pos {} parent "{}", label: "{}"'.format(depth, num, pos, parent, label))
                 out_question.write('%s;%s;%4d\n' %(label, parent, pos))
 
 
@@ -518,7 +514,8 @@ def get_question_item(question_item, order_question):
     df_order = pd.read_csv(order_question, sep=';')
     df_order['new_name'] = df_order['Label'].map(lambda x: re.sub('(_\d+)$', '', x))
 
-    df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='inner', left_on='Name', right_on='new_name')
+    # df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='inner', left_on='Name', right_on='new_name')
+    df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='right', left_on='Name', right_on='new_name')
     df_QI.to_csv('TEMP.csv', sep = ';', index=False)
 
     df_QI['code_name_old'] = 'cs_' + df_QI['Label_y']
@@ -749,8 +746,6 @@ def main():
     df_question_item['Literal'] = df_question_item['Literal_new']
     df_question_item = df_question_item.drop('Literal_new', 1)
 
-    df_question_item.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
-    df_question_grid.to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
 
     generate_code_list(out_file,
                        order_question_2,
@@ -759,6 +754,26 @@ def main():
     df_codes = pd.read_csv(os.path.join(db_input_dir, 'codes.csv'), sep=';')
     df_codes_sub = df_codes[~df_codes['Label'].isin(['cs_' + i for i in text_insert_dict.keys()])]
     df_codes_sub.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), sep=';', index=False)
+
+    print("rescue question literal")
+    def fill_question_literal(question, codelist, txt_content):
+        result = re.findall('%s\s*\n(.*?)%s\s*\n' % (question, codelist), txt_content, re.DOTALL)
+
+        if result != []:
+            return result[0].replace('|', '').strip()
+        else:
+            return None
+
+    with open(out_file, 'r') as content_file:
+        wave8_content = content_file.read()
+
+    df_question_item['Literal_new'] = df_question_item.apply(lambda row: fill_question_literal(row['Label'], df_codes_sub.loc[(df_codes_sub.Label == 'cs_' + row['Label']) & (df_codes_sub.codes_order == 1)]['Category'].values[0], wave8_content) if pd.isnull(row['Literal']) and 'cs_' + row['Label'] in df_codes_sub.Label.tolist() else row['Literal'], axis=1)
+    df_question_item.drop(['Literal'], axis=1, inplace=True)
+    df_question_item = df_question_item.rename(columns={'Literal_new': 'Literal'})
+
+    df_question_item.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
+    df_question_grid.to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
+
 
 if __name__ == "__main__":
     main()
