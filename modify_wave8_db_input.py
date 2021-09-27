@@ -186,7 +186,7 @@ def main():
     cols = ['Label', 'Literal', 'Logic', 'above_label', 'parent_type', 'Position']
     df_condition[cols].to_csv(os.path.join(new_dir, 'wave8_condition.csv'), index=False, sep=';')
 
-    os.system('cp ../LSYPE1/wave8-xml/db_temp_input/wave8_sequences.csv ../LSYPE1/wave8-xml/db_input_modified/wave8_sequences.csv') 
+    os.system('cp ../LSYPE1/wave8-xml/db_temp_input/wave8_sequences.csv ../LSYPE1/wave8-xml/db_input_modified/wave8_sequences.csv')
 
 
 if __name__ == "__main__":

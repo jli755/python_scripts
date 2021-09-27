@@ -27,7 +27,7 @@ def QuestionTextInsert(out_file, out_key, out_key_modified):
     modify out_file and out_key from pdf_to_text function
 
     QuestionTextInsert:
-        - replace all #*QuestionTextInsert part with it's actual text
+        - replace all #*TextInsert part with it's actual text
     """
     with open(out_file, 'r') as file:
         out_file_text = file.read()
@@ -35,16 +35,31 @@ def QuestionTextInsert(out_file, out_key, out_key_modified):
     # generate dictionary for question text intsert
     #                    no hash
     #                                                      at least one (nonpipe or nonwhite)
-    l = re.findall('(\|*[^\#\s]*QuestionTextInsert.*)\n((?:\|*.*[^\|\s].*\n)+)\|*\s*\n', out_file_text)
+    l = re.findall('(\|*[^\#\s]*TextInsert.*)\n((?:\|*.*[^\|\s].*\n)+)\|*\s*\n', out_file_text)
 
     text_dict = {}
     for item in l:
-        k = item[0].replace('|', '').strip()
-        v = 'TextInsert: ' + item[1].replace('|', '').strip()
-        text_dict[k] = v
+        if len(item[0].strip().split(' ')) == 1 :
+            k = item[0].replace('|', '').strip()
+            v = 'TextInsert: ' + item[1].replace('|', '').strip()
+            text_dict[k] = v
 
-    # other insert names
-    insert_name = re.findall('\{(\#.*nsert.*)\}', out_file_text)
+    # other text insert, not answer from question insert
+    refer_list = re.findall('.*\{\#(\w+)\}.*', out_file_text)
+
+    l1 = [x for x in refer_list if x not in text_dict.keys()]
+    l1_names = '|'.join(['\|*' + x + '\s+' for x in l1])
+    l1_search = re.findall('({0})\n((?:\|*.*[^\|\s].*\n)+)\|*\s*\n'.format(l1_names), out_file_text) 
+
+    add_dict = {}
+    for item in l1_search:
+        k = item[0].replace('|', '').strip()
+        if k in l1:
+            v = 'TextInsert: ' + item[1].replace('|', '').strip()
+            add_dict[k] = v
+
+    # combine two dict
+    text_dict.update(add_dict)
 
     # remove *QuestionTextInsert from key file
     with open(out_key, 'r') as in_f, open(out_key_modified, 'w') as out_f:
@@ -83,7 +98,7 @@ def pdf_to_text(pdf_file, out_file, out_key):
             # remove page number
             n = page.page_number
             # manually fix change to new page
-            if n in (27, 71, 83, 89, 112, 121, 147, 182, 46):
+            if n in (26, 27, 71, 83, 89, 112, 121, 147, 182, 46, 6, 166):
                new_text = rreplace(text, str(n), '', 1).strip() + '\n'
             else:
                 new_text = rreplace(text, str(n), ' \n', 1)
@@ -121,13 +136,15 @@ def pdf_to_text(pdf_file, out_file, out_key):
                 elif line.startswith('| Credit.'):
                     line = line.replace('| Credit.', '')
 
-                if not any(x in line for x in ['{', '..', 'COMPUTE:', 'IF LOOP', 'IF CRNOWMA = 1 OR 2', 'Dummy', 'DUMMY', '?', 'Content', 'Never', 'Always']):
+                if not any(x in line for x in ['{', '..', 'COMPUTE:', 'IF LOOP', 'IF CRNOWMA = 1 OR 2', 'Dummy', 'DUMMY', '?', 'Content', 'Never', 'Always', 'Include:', 'Exclude:', 'Credit.']):
 
                     if line.startswith(tuple(prefixes)):
                         k_out.write(line.strip() + '\n')
                     elif len(line.split()) == 1 and sum(1 for c in line if c.isupper()) > 0 :
                         k_out.write(line.strip() + '\n')
                     elif any(x in line.split() for x in ['|', '||', '|||']):
+                        if 'Cintro' in line or 'Other state benefit' in line:
+                            k_out.write(line.strip() + '\n')
                         if len(line.replace('|', '').split()) == 1 and sum(1 for c in line if c.isupper()) > 1:
                             k_out.write(line.strip() + '\n')
                         elif line.replace('|', '').lstrip().startswith(tuple(prefixes)):
@@ -514,12 +531,11 @@ def get_question_item(question_item, order_question):
     df_order = pd.read_csv(order_question, sep=';')
     df_order['new_name'] = df_order['Label'].map(lambda x: re.sub('(_\d+)$', '', x))
 
-    # df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='inner', left_on='Name', right_on='new_name')
     df_QI = pd.merge(df_question_item.loc[:, keep_col], df_order, how='right', left_on='Name', right_on='new_name')
     df_QI.to_csv('TEMP.csv', sep = ';', index=False)
 
     df_QI['code_name_old'] = 'cs_' + df_QI['Label_y']
-    df_QI['code_name'] = df_QI['code_name_old'].map(lambda x: re.sub('(_\d+)$', '', x))
+    df_QI['code_name'] = df_QI['code_name_old'].map(lambda x: re.sub('(_\d+)$', '', x) if not pd.isnull(x) else x)
 
     df_QI = df_QI.rename(columns={'Label_x': 'response_domain_name'})
     df_QI.drop(['Name', 'new_name'], axis=1, inplace=True)
@@ -581,6 +597,11 @@ def get_code_list_from_questionpair(txt_file, question_1, question_2, debug=Fals
     #question_2 = 'REGR'
 
     result = re.findall('%s\s*\n(.*?)%s\s*\n' % (question_1, question_2), content, re.DOTALL)
+
+    # hack here
+    if question_1.upper() in ('RAGE', 'RENT'):
+        result = None
+
     if not result:
         return []
     if not len(result) == 1:
@@ -600,6 +621,7 @@ def get_code_list_from_questionpair(txt_file, question_1, question_2, debug=Fals
 
     #if 'GRID COLS' in result:
     A = result.split('GRID COLS')
+
     if len(A) == 1:
         return ["REGULAR", stuff(result)]
     elif len(A) == 2:
@@ -680,13 +702,15 @@ def generate_code_list(txt_file, question_file, output_code):
                         #print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
                         out_code.write('%s;%4d;%s;%4d\n' %(name, int(value), cat, j+1))
                 elif len(c) == 4:
+                    #print(L[i])
+                    #print(c)
                     name = "cs_{}_horizontal".format(L[i])
                     assert c[0] == 'HORIZ'
                     code_list = c[1]
                     for j in range(0, len(code_list)):
                         value = code_list[j][0]
                         cat = code_list[j][1]
-                        #print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
+                        # print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
                         out_code.write('%s;%4d;%s;%4d\n' %(name, int(value), cat, j+1))
                     name = "cs_{}_vertical".format(L[i])
                     assert c[2] == 'VERTICAL'
@@ -694,7 +718,7 @@ def generate_code_list(txt_file, question_file, output_code):
                     for j in range(0, len(code_list)):
                         value = code_list[j][0]
                         cat = code_list[j][1]
-                        #print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
+                        # print("{}\t{}\t{}\t{}".format(name, value, cat, j+1))
                         out_code.write('%s;%4d;%s;%4d\n' %(name, int(value), cat, j+1))
                 elif len(c) == 0:
                     pass
@@ -717,7 +741,7 @@ def main():
     order_condition = os.path.join(db_input_dir, 'wave8_condition.csv')
     order_loop = os.path.join(db_input_dir, 'wave8_order_loop.csv')
 
-    # pdf to textgenerate_code_list
+    # pdf to text
     pdf_to_text(wave8_pdf, out_file, key_file)
 
     # remove question text insert from key file
@@ -746,6 +770,9 @@ def main():
     df_question_item['Literal'] = df_question_item['Literal_new']
     df_question_item = df_question_item.drop('Literal_new', 1)
 
+    df_question_grid['Literal_new'] = df_question_grid['Literal'].apply(lambda x: do_replace(x, text_insert_dict) if not pd.isnull(x) else x)
+    df_question_grid['Literal'] = df_question_grid['Literal_new']
+    df_question_grid = df_question_grid.drop('Literal_new', 1)
 
     generate_code_list(out_file,
                        order_question_2,
@@ -753,6 +780,8 @@ def main():
 
     df_codes = pd.read_csv(os.path.join(db_input_dir, 'codes.csv'), sep=';')
     df_codes_sub = df_codes[~df_codes['Label'].isin(['cs_' + i for i in text_insert_dict.keys()])]
+    df_codes_sub = df_codes_sub.drop_duplicates(subset=['Label', 'Value'], keep="first")
+
     df_codes_sub.to_csv(os.path.join(db_input_dir, 'wave8_codes.csv'), sep=';', index=False)
 
     print("rescue question literal")
@@ -771,8 +800,70 @@ def main():
     df_question_item.drop(['Literal'], axis=1, inplace=True)
     df_question_item = df_question_item.rename(columns={'Literal_new': 'Literal'})
 
-    df_question_item.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
-    df_question_grid.to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
+    # convert question grid to question item, modify position
+    # code list lable
+    df_code_horizontal = df_codes_sub.loc[ df_codes_sub['Label'].str.contains("_horizontal") , :]
+
+    # merge question grid with horizontal code
+    df_qg_horizontal = df_question_grid.merge(df_code_horizontal, left_on='horizontal_code_list_name', right_on='Label', how='left')
+    df_qg_horizontal['Label'] = df_qg_horizontal.apply(lambda row: row['Label_x'].replace('qg', 'qi') + '_' + str(int(row['codes_order'])) if not pd.isnull(row['codes_order']) else row['Label_x'].replace('qg', 'qi'), axis=1 )
+    df_qg_horizontal['Literal_new'] = df_qg_horizontal['Literal'] + ' < ' + df_qg_horizontal['Value'].astype(str) + ', ' + df_qg_horizontal['Category'] + ' >'
+
+    df_qg_horizontal['Response_domain'] = df_qg_horizontal['vertical_code_list_name']
+    df_qg_horizontal['Position_new'] = df_qg_horizontal['Position'] + df_qg_horizontal['codes_order'] - 1
+    df_qg_horizontal = df_qg_horizontal.drop(['vertical_code_list_name', 'Label_y', 'Literal', 'Position'], 1)
+    df_qg_horizontal.rename(columns={'Literal_new': 'Literal', 'Position_new': 'Position'}, inplace=True)
+
+    # for each question group item find it's original parent/position
+    df_qg_postion = df_qg_horizontal[['Label', 'above_label', 'Position', 'parent_type']]
+    # for each question group item find the number need to be added to the position
+    df_size = df_qg_horizontal.groupby(['Label_x']).size().to_frame('size').reset_index()
+
+    # if size=1 in gq, no need to modify position
+    size_one_label = df_size[df_size['size'] == 1]['Label_x'].tolist() 
+
+    df_qg_horizontal['qi_position'] = df_qg_horizontal['Label'].apply(lambda x: df_question_item[df_question_item['Label'] == x.split('_')[0]]['Position'].values[0] )
+    # modified position
+    df_qg_horizontal['position_mod'] = df_qg_horizontal.apply(lambda row: row['Position'] if row['Label'] in size_one_label else row['qi_position'] * 10 + row['Position'], axis=1)
+
+    df_condition = pd.read_csv(order_condition, sep=';')
+    df_loop = pd.read_csv(order_loop, sep=';')
+
+    keep_cols = ['Label', 'above_label', 'Position']
+    df_qi_cols = df_question_item[keep_cols]
+    df_if_cols = df_condition[keep_cols]
+    df_loop_cols = df_loop[keep_cols]
+
+    df_qi_cols['position_mod'] = df_qi_cols['Position'] * 10
+    df_if_cols['position_mod'] = df_if_cols['Position'] * 10
+    df_loop_cols['position_mod'] = df_loop_cols['Position'] * 10
+
+    df_qg_cols = df_qg_horizontal[['Label', 'above_label', 'Position', 'position_mod']]
+    # stack
+    df_mod_pos = pd.concat([df_qi_cols, df_qg_cols, df_if_cols, df_loop_cols], ignore_index=True)
+    # sort
+    df_mod_pos = df_mod_pos.sort_values(['above_label', 'position_mod'], ascending=[True, True])
+    # create new position
+    df_mod_pos['New'] = df_mod_pos.groupby('above_label').cumcount()
+    mod_dict = dict(zip(df_mod_pos.Label, df_mod_pos.New))
+
+    df_mod_pos.to_csv('TMP.csv', sep=';')
+
+    qi_cols = ['Label', 'Literal', 'Response_domain', 'above_label', 'Position', 'parent_type']
+    df_qi_add = df_qg_horizontal[qi_cols]
+
+    # shift position after question grid for same parent[['Label', 'above_label', 'Position',
+    df_question_item = df_question_item[~df_question_item.Label.isin(df_question_grid.Label)]
+    df_qi_new = pd.concat([df_question_item, df_qi_add], ignore_index=True)
+
+    df_qi_new['Position'] = df_qi_new['Position'].map(mod_dict)
+    df_condition['Position'] = df_condition['Position'].map(mod_dict)
+    df_loop['Position'] = df_loop['Position'].map(mod_dict)
+
+    df_qi_new.to_csv(os.path.join(db_input_dir, 'wave8_question_item.csv'), sep=';', index=False)
+    pd.DataFrame(columns=df_question_grid.columns).to_csv(os.path.join(db_input_dir, 'wave8_question_grid.csv'), sep='@', index=False)
+    df_condition.to_csv(order_condition, sep=';', index=False)
+    df_loop.to_csv(order_loop, sep=';', index=False)
 
 
 if __name__ == "__main__":
