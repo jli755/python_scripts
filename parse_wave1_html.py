@@ -177,7 +177,7 @@ def get_questionnaire(tree):
                                             else 'Response' if row['title'].lower().startswith('hours')
                                             else 'Standard' if 'ask all' in row['title']
                                             else row['source'], axis=1)
-    df.to_csv('title.csv', sep= ';')
+    # df.to_csv('title.csv', sep= ';')
 
     # assign code list group
     df['code_group'] = df['source_new'].ne(df['source_new'].shift()).cumsum()
@@ -338,7 +338,7 @@ def get_question_items(df):
     """
 
     # find each question
-    df_question_name = df.loc[(df.source == 'SectionNumber'), ['sourceline', 'questions']]
+    df_question_name = df.loc[(df.source == 'SectionNumber'), ['sourceline', 'questions', 'Interviewee']]
 
     df_question_literal = df.loc[df['source'] == 'Standard', ['questions', 'title']]
     df_question_literal_combine = df_question_literal.groupby('questions')['title'].apply('\n'.join).reset_index()
@@ -422,9 +422,8 @@ def get_conditions(df):
     """
 
     # if can not parse (a=b), use the name of the NEXT question
-    df.to_csv('TMP.csv',index=False,sep='\t')
     df['next_question'] = df['questions'].shift(-1)
-    
+
     df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title', 'condition_end', 'next_question']]
 
     df_conditions['Logic_name'] = df_conditions['title'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x) )
@@ -555,15 +554,19 @@ def main():
         if idx == 0:
             section_name = 'HOUSEHOLD RESPONDENT SECTION'
             line_start = 78
+            interviewee = 'Main parent of cohort/sample member'
         elif idx == 1:
             section_name = 'MAIN/INDIVIDUAL PARENT SECTION'
             line_start = 111.5
+            interviewee = 'Main parent of cohort/sample member'
         elif idx == 2:
             section_name = 'YOUNG PERSON SECTION'
             line_start = 101
+            interviewee = 'Cohort/sample member'
         else:
             section_name = 'YOUNG PERSON SECTION'
             line_start = 108
+            interviewee = 'Cohort/sample member'
 
         htmlFile = os.path.join(input_dir, val)
         tree = html_to_tree(htmlFile)
@@ -582,6 +585,7 @@ def main():
         df_q = df_q.loc[(df_q.sourceline >= line_start) , :]
 
         df_q['new_sourceline'] = df_q['sourceline'] + 100000*idx
+        df_q['Interviewee'] = interviewee
 
         df_q.to_csv('../LSYPE1/wave1-html/{}.csv'.format(idx), sep= ';', encoding = 'utf-8', index=False)
         appended_data.append(df_q)
@@ -589,7 +593,7 @@ def main():
     df.to_csv('DF.csv', sep='\t')
 
     # manual fix SHOWCARD C2Qualc, split into two rows
-    df.loc[-1] = [168, 'SHOWCARD C2', 0, 'Instruction', 100168 ]  # adding a row
+    df.loc[-1] = [168, 'SHOWCARD C2', 0, 'Instruction', 100168, 'Cohort/sample member' ]  # adding a row
     df = df.sort_values('new_sourceline')
 #    df['new_sourceline'] = df['new_sourceline'].astype('int64')
 
@@ -739,7 +743,7 @@ def main():
 
     #TODO
     # remove duplicated conditions.
-    # If there are two conditions with the same text e.g. Extrat5 and Extrat6 can the second one be ignored and the questions inside it be added to the first condition instead?
+    # If there are two conditions with the same text e.g. Extrat5 and Extrat6 can the second one be ignored and the questask allions inside it be added to the first condition instead?
     df = pd.concat([df.loc[df.source != 'Condition'],
                     df.loc[(df.source == 'Condition') & (df.title.str.contains(r'ask all', case=False)) ],
                     df.loc[(df.source == 'Condition') & (~ df.title.str.contains(r'ask all', na=False, case=False)) ].drop_duplicates(['title'],keep='first')]).sort_index()
@@ -755,7 +759,8 @@ def main():
     #df.to_csv('tmp_sourceline.csv', sep='\t')
 
     # remove {ask all}
-    df = df[~(df['title'].str.contains(r'ask all', case=False))]
+    # df = df[~(df['title'].str.contains(r'ask all', case=False))]
+    df = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
 
     # rename duplicated question names
     df['tmp'] = df.groupby('title').cumcount()
@@ -821,11 +826,10 @@ def main():
             return ""
     df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-').replace('Numeric', 'Range').replace('Hours', 'Range:') if not pd.isnull(row['Min']) > 0 else 'Long text' if (len(re.findall('(?i)open answer', row['title'])) > 0 and pd.isnull(row['Max'])) else 'Generic text' if (len(re.findall('(?i)open answer', row['title'])) > 0 and not pd.isnull(row['Max']))  else row['title'], axis=1)
 
-    df_response.to_csv('temp_response.csv', sep=';')
+    #df_response.to_csv('temp_response.csv', sep=';')
     # need to change these in the original df
     vdic = pd.Series(df_response.title1.values, index=df_response.title).to_dict()
     df.loc[df.title.isin(vdic.keys()), 'title'] = df.loc[df.title.isin(vdic.keys()), 'title'].map(vdic)
-
 
     df_response = df_response.drop('title', 1)
 
@@ -849,6 +853,7 @@ def main():
     # 3. Statements
     df_statement = get_statements(df[df['source'] == 'Statement'])
 
+    # 4. question items
     df_question_items = get_question_items(df)
 
     # 5. Sequences
@@ -980,11 +985,12 @@ def main():
 
     # output csv
     df_questions_new = pd.merge(df_question_items, df_all_new, how='left', on=['sourceline', 'Label'])
-    questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position']
+
+    questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position', 'Interviewee']
     df_qi_input = df_questions_new[questions_keep]
 
     # pipeline columns
-    question_item_pipeline = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses']
+    question_item_pipeline = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses', 'Interviewee']
     df_qi_input.rename(columns={'above_label': 'Parent_Name',
                                 'parent_type': 'Parent_Type',
                                 'branch': 'Branch'}, inplace=True)
