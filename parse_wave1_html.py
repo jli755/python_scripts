@@ -159,7 +159,7 @@ def get_questionnaire(tree):
     df = df.apply(lambda x: x.replace('U+00A9',''))
 
     # -1 for don't know and -92 for refused
-    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse).*', x) != None else x)
+    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know|Dont Know|Don't Know).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse).*', x) != None else x)
 
     df.drop('title', axis=1, inplace=True)
     df.rename(columns={'title_m': 'title'}, inplace=True)
@@ -167,9 +167,11 @@ def get_questionnaire(tree):
     df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText'])
                                             else 'codelist' if row['source'] == 'listlevel1WW8Num'
                                             else 'Instruction' if row['title'].lower().startswith('show')
+                                            else 'Instruction' if row['title'].lower().startswith('press')
+                                            else 'Instruction' if row['title'].lower().startswith('enter')
                                             else 'Instruction' if row['title'].lower().startswith('- ')
                                             # All text which starts with upper case words should be added to instructions
-                                            else 'Instruction' if (len(row['title'].split(' ')) > 1 and row['source'] in ['Standard', 'PlainText'] and row['title'].split(' ')[0].upper() == row['title'].split(' ')[0])
+                                            else 'Instruction' if (len(row['title'].split(' ')) > 1 and row['source'] in ['Standard', 'PlainText'] and row['title'].split(' ')[0].upper() == row['title'].split(' ')[0] and not row['title'].startswith('{') and not row['title'].startswith('(') and not row['title'].startswith('*') and not row['title'].startswith('...') and not row['title'].startswith('I ')) 
                                             # Open answer should be a response domain Generic text rather than used/added to question literal.
                                             # Open type: long verbatim answer is the response domain Long text
                                             else 'Response' if row['title'].lower().startswith('open')
@@ -177,7 +179,6 @@ def get_questionnaire(tree):
                                             else 'Response' if row['title'].lower().startswith('hours')
                                             else 'Standard' if 'ask all' in row['title']
                                             else row['source'], axis=1)
-    # df.to_csv('title.csv', sep= ';')
 
     # assign code list group
     df['code_group'] = df['source_new'].ne(df['source_new'].shift()).cumsum()
@@ -230,8 +231,7 @@ else row['source'], axis=1)
     question_list = ['Hdob']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
-    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop'))
-else 'Response' if row['title'].lower().startswith('enter ') else row['question_source'], axis=1)
+    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop')) else row['question_source'], axis=1)
 
     new_df.drop(['source', 'condition_source', 'new_source', 'question_source'], axis=1, inplace=True)
 
@@ -784,11 +784,12 @@ def main():
     # label
     df_codes['Label'] = 'cs_q' + df_codes['questions']
     df_codes.rename(columns={'sourceline': 'Number', 'seq': 'codes_order'}, inplace=True)
-    df_codes['value'] = df_codes['codes_order']
+    #df_codes['value'] = df_codes['codes_order']
+    df_codes['value'] = df_codes.apply(lambda row: row['title'].split('. ')[0] if '-' in row['title'] or '. ' in row['title'] else row['codes_order'], axis=1)
 
     # strip number. out from title
-    df_codes['Category_old'] = df_codes['title'].apply(lambda x: re.sub('^\d+', '', x).strip('.').strip(',').strip(' '))
-
+    df_codes['Category_old'] = df_codes['title'].apply(lambda x: re.sub('^-*\d+', '', x).strip('.').strip(',').strip(' '))
+    df_codes.to_csv('tmp.csv')
     # ignore the GOTO…. in categories
     df_codes['Category'] = df_codes['Category_old'].apply(lambda x: x[:x.index("GOTO")].rstrip() if 'GOTO' in x else x)
 
