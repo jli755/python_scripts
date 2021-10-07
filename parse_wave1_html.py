@@ -231,7 +231,7 @@ else row['source'], axis=1)
     question_list = ['Hdob']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
-    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop')) else row['question_source'], axis=1)
+    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop')) else row['question_source'], axis=1)
 
     new_df.drop(['source', 'condition_source', 'new_source', 'question_source'], axis=1, inplace=True)
 
@@ -376,8 +376,10 @@ def get_question_items(df):
     # df_question_all['Label'] = df_question_all.groupby('questions').questions.apply(lambda n: 'qi_' + n.str.strip() + '_' + (np.arange(len(n))).astype(str))
     # df_question_all['Label'] = df_question_all['Label'].str.strip('_0')
 
-    df_question_all = df_question_all.drop_duplicates(subset=['Label'], keep='first')
-
+    df_question_all = df_question_all.drop_duplicates(subset=['Label', 'Response'], keep='first')
+    # add response order
+    df_question_all['rd_order']=df_question_all.groupby('Label').cumcount() + 1
+    df_question_all.to_csv('tmp_qi.csv')
     # request 3: If there is no question literal, can we add the instruction text to the literal instead
     # remove it from instruction afterwards
     df_question_all.loc[df_question_all['Literal'].isnull(), 'Literal'] = df_question_all['Instructions']
@@ -807,10 +809,10 @@ def main():
     #df_response.to_csv('../LSYPE1/wave1-html/df_response.csv', encoding = 'utf-8', index=False, sep=';')
 
     df_response['Type'] = df_response['title'].apply(lambda x: 'Numeric' if any (c in x for c in ['Numeric', 'RANGE'])
-                                                          else 'Datetime' if x in ['ENTER DATE', 'DATETYPE']
+                                                          else 'Date' if x in ['ENTER DATE', 'DATETYPE']
                                                           else 'Text')
     df_response['Numeric_Type/Datetime_type'] = df_response['title'].apply(lambda x: 'Integer' if any (c in x for c in ['Numeric', 'RANGE'])
-                                                                                else 'Date' if x in ['ENTER DATE', 'DATETYPE']
+                                                                                else 'DateTime' if x in ['ENTER DATE', 'DATETYPE']
                                                                                 else '')
     df_response['Min'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[0] if len(re.findall(r'\d+', x)) == 2 else None)
     df_response['Max'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[-1] if len(re.findall(r'\d+', x)) >= 1 else None)
@@ -894,7 +896,8 @@ def main():
     # 8. Find parent label
     df_sequences_p = df_sequences.loc[:, ['sourceline', 'Label']]
     df_sequences_p['source'] = 'CcSequence'
-    df_questions_items_p = df_question_items.loc[:, ['sourceline', 'Label']]
+    df_questions_items_p = df_question_items.loc[:, ['sourceline', 'Label']].drop_duplicates()
+
     df_questions_items_p['source'] = 'CcQuestions'
     """
     df_questions_grids_p = df_question_grids.loc[:, ['sourceline', 'Label']]
@@ -987,11 +990,11 @@ def main():
     # output csv
     df_questions_new = pd.merge(df_question_items, df_all_new, how='left', on=['sourceline', 'Label'])
 
-    questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position', 'Interviewee']
+    questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position', 'rd_order', 'Interviewee']
     df_qi_input = df_questions_new[questions_keep]
 
     # pipeline columns
-    question_item_pipeline = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses', 'Interviewee']
+    question_item_pipeline = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses', 'rd_order', 'Interviewee']
     df_qi_input.rename(columns={'above_label': 'Parent_Name',
                                 'parent_type': 'Parent_Type',
                                 'branch': 'Branch'}, inplace=True)
