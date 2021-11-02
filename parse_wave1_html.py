@@ -81,8 +81,8 @@ def get_SequenceNumber(tree):
     for elem in tree.xpath("//h1"):
         L = list(elem.itertext())
         s = "".join(L).strip()
-        strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
-        s = strip_unicode.sub('', s)
+       # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
+       # s = strip_unicode.sub('', s)
         if s:
             dicts.append({"source": 'SequenceNumber',
                           "sourceline": elem.sourceline,
@@ -510,8 +510,8 @@ def get_loops(df):
     df_loops.loc[len(df_loops)] = ['l_qEmpStat', 'EmpStat', 359, 392, 'Record for each household member aged 16+', 'for each household member aged 16+']
     df_loops.loc[len(df_loops)] = ['l_qEthGrp', 'EthGrp', 396, 438, 'Ask for each household member', 'for each household member']
     df_loops.loc[len(df_loops)] = ['l_qR', 'R', 453, 496, 'Ask for each household member', 'for each household member']
-    df_loops.loc[len(df_loops)] = ['l_qJHAct', 'JHAct', 100913, 100967, 'Ask for all activities since young persons birth/parents arrival in same household', 'for all activities since young persons birth/parents arrival in same household']
-    df_loops.loc[len(df_loops)] = ['l_qJHStM', 'JHStM', 100968, 100997, 'Ask for all activities since young persons birth/parents arrival in same household', 'for all activities since young persons birth/parents arrival in same household']
+    df_loops.loc[len(df_loops)] = ['l_qJHAct', 'JHAct', 200913, 200967, 'Ask for all activities since young persons birth/parents arrival in same household', 'for all activities since young persons birth/parents arrival in same household']
+    df_loops.loc[len(df_loops)] = ['l_qJHStM', 'JHStM', 200968, 200997, 'Ask for all activities since young persons birth/parents arrival in same household', 'for all activities since young persons birth/parents arrival in same household']
     df_loops.loc[len(df_loops)] = ['l_qYouBulN', 'YouBulN', 302651, 302667, 'For each type of bullying experienced', 'for each type of bullying experienced']
 
     return df_loops
@@ -572,11 +572,11 @@ def main():
             interviewee = 'Main parent of cohort/sample member'
         elif idx == 1:
             section_name = 'MAIN/INDIVIDUAL PARENT SECTION'
-            line_start = 103
+            line_start = 100
             interviewee = 'Main parent of cohort/sample member'
         elif idx == 2:
             section_name = 'INDIVIDUAL PARENT SECTION'
-            line_start = 68
+            line_start = 66
             interviewee = 'Main parent of cohort/sample member'
         else:
             section_name = 'YOUNG PERSON SECTION'
@@ -587,7 +587,7 @@ def main():
         tree = html_to_tree(htmlFile)
 
         title = tree.xpath('//title')[0].text
-        # print(title)
+        print(title)
 
         df_q = get_questionnaire(tree)
 
@@ -609,14 +609,14 @@ def main():
     df.to_csv('DF.csv', sep='\t')
 
     # manual fix SHOWCARD C2Qualc, split into two rows
-    df.loc[len(df)] = [168, 'SHOWCARD C2', 0, 'Instruction', 100168, 'Cohort/sample member',  'MAIN/INDIVIDUAL PARENT SECTION']  # adding a row
+    df.loc[len(df)] = [168, 'SHOWCARD C2', 0, 'Instruction', 200168, 'Cohort/sample member',  'MAIN/INDIVIDUAL PARENT SECTION']  # adding a row
 
     df = df.sort_values('new_sourceline')
 #    df['new_sourceline'] = df['new_sourceline'].astype('int64')
 
-    df.loc[df['new_sourceline'] == 100169, 'title'] = 'Qualc'
-    df.loc[df['new_sourceline'] == 100169, 'source'] = ' SectionNumber'
-    df.loc[df['new_sourceline'] == 100170, 'source'] = 'Standard'
+    df.loc[df['new_sourceline'] == 200169, 'title'] = 'Qualc'
+    df.loc[df['new_sourceline'] == 200169, 'source'] = ' SectionNumber'
+    df.loc[df['new_sourceline'] == 200170, 'source'] = 'Standard'
 
     df.loc[df['new_sourceline'] == 102, 'title'] = '3. NHS/Health trust or other establishment providing nursing care'
     df = df[df.new_sourceline != 103]
@@ -665,26 +665,26 @@ def main():
     df.loc[df['new_sourceline'] == 434, 'title'] = '16. Chinese or Other ethnic group: Any other'
     df = df[df.new_sourceline != 431]
 
-    df.loc[df['new_sourceline'] == 101096, 'title'] = '1. White: White - British'
-    df.loc[df['new_sourceline'] == 101097, 'title'] = '2. White: White - Irish'
-    df.loc[df['new_sourceline'] == 101098, 'title'] = '3. White: Any other White background (specify)'
-    df = df[df.new_sourceline != 101093]
-    df.loc[df['new_sourceline'] == 101104, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.loc[df['new_sourceline'] == 101105, 'title'] = '5. Mixed: White and Black African'
-    df.loc[df['new_sourceline'] == 101106, 'title'] = '6. Mixed: White and Asian'
-    df.loc[df['new_sourceline'] == 101107, 'title'] = '7. Mixed: Any other mixed background (specify)'
-    df = df[df.new_sourceline != 101100]
-    df.loc[df['new_sourceline'] == 101113, 'title'] = '11. Asian or Asian British: Indian'
-    df.loc[df['new_sourceline'] == 101114, 'title'] = '12. Asian or Asian British: Pakistani'
-    df.loc[df['new_sourceline'] == 101115, 'title'] = '13. Asian or Asian British: Bangladeshi'
-    df.loc[df['new_sourceline'] == 101116, 'title'] = '14. Asian or Asian British: Any other Asian background'
-    df = df[df.new_sourceline != 101109]
-    df.loc[df['new_sourceline'] == 101122, 'title'] = '16. Black or Black British: Caribbean'
-    df.loc[df['new_sourceline'] == 101123, 'title'] = '17. Black or Black British: African'
-    df.loc[df['new_sourceline'] == 101124, 'title'] = '18. Black or Black British: Any other Black background (specify)'
-    df = df[df.new_sourceline != 101118]
-    df.loc[df['new_sourceline'] == 101128, 'title'] = '20. Chinese'
-    df.loc[df['new_sourceline'] == 101129, 'title'] = '21. Any other'
+    df.loc[df['new_sourceline'] == 201096, 'title'] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 201097, 'title'] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 201098, 'title'] = '3. White: Any other White background (specify)'
+    df = df[df.new_sourceline != 201093]
+    df.loc[df['new_sourceline'] == 201104, 'title'] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 201105, 'title'] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 201106, 'title'] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 201107, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df = df[df.new_sourceline != 201100]
+    df.loc[df['new_sourceline'] == 201113, 'title'] = '11. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 201114, 'title'] = '12. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 201115, 'title'] = '13. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 201116, 'title'] = '14. Asian or Asian British: Any other Asian background'
+    df = df[df.new_sourceline != 201109]
+    df.loc[df['new_sourceline'] == 201122, 'title'] = '16. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 201123, 'title'] = '17. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 201124, 'title'] = '18. Black or Black British: Any other Black background (specify)'
+    df = df[df.new_sourceline != 201118]
+    df.loc[df['new_sourceline'] == 201128, 'title'] = '20. Chinese'
+    df.loc[df['new_sourceline'] == 201129, 'title'] = '21. Any other'
 
     df.loc[df['new_sourceline'] == 156, ['source']] = 'SectionNumber'
     df.loc[df['new_sourceline'] == 181, ['source']] = 'SectionNumber'
@@ -694,23 +694,22 @@ def main():
 
     # statement
     df.loc[df['new_sourceline'] == 113, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 100380, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 100858, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 101038, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 200860, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 201291, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 201717, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 202020, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 202028, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200380, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200858, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 201038, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 100860, ['source']] = 'Statement'
+    
+    df.loc[df['new_sourceline'] == 101717, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 102020, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 102028, ['source']] = 'Statement'
     df.loc[df['new_sourceline'] == 300959, ['source']] = 'Statement'
 
-    df.loc[df['new_sourceline'] == 100169, ['source']] = 'SectionNumber'
-    df.loc[df['new_sourceline'] == 202144, ['source']] = 'SectionNumber'
-    df.loc[df['new_sourceline'] == 202166, ['source']] = 'SectionNumber'
-    df.loc[df['new_sourceline'] == 202182, ['source']] = 'SectionNumber'
-    df.loc[df['new_sourceline'] == 202197, ['source']] = 'SectionNumber'
-    df.loc[df['new_sourceline'] == 202216, ['source']] = 'SectionNumber'
-    df.loc[df['new_sourceline'] == 202230, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 102144, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 102166, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 102182, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 102197, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 102216, ['source']] = 'SectionNumber'
+    df.loc[df['new_sourceline'] == 102230, ['source']] = 'SectionNumber'
 
     df.loc[df['new_sourceline'] == 303198, ['source']] = 'Instruction'
     df.loc[df['new_sourceline'] == 303199, ['source']] = 'Standard'
@@ -718,43 +717,45 @@ def main():
     df.loc[df['new_sourceline'] == 303201, ['source']] = 'Statement'
     df.loc[df['new_sourceline'] == 301234, ['source']] = 'Instruction'
  
-    df.loc[df['new_sourceline'] == 100134, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 100135, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 100137, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 100139, ['source']] = 'Statement'
-    df.loc[df['new_sourceline'] == 100909, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200134, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200135, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200137, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200139, ['source']] = 'Statement'
+    df.loc[df['new_sourceline'] == 200909, ['source']] = 'Statement'
 
     question_grid_names = ['Qualb', 'Quald', 'Qualf', 'QualH']
-    df.loc[df['new_sourceline'] == 100192, ['source']] = 'Standard'
-    df = df[df.new_sourceline != 100140]
-    df = df[df.new_sourceline != 100141]
-    df = df[df.new_sourceline != 100142]
-    df.loc[df['new_sourceline'] == 100148, ['new_sourceline']] = 100140
-    df.loc[df['new_sourceline'] == 100151, ['new_sourceline']] = 100141
-    df.loc[df['new_sourceline'] == 100152, ['new_sourceline']] = 100142
+    df.loc[df['new_sourceline'] == 200192, ['source']] = 'Standard'
+    df = df[df.new_sourceline != 200140]
+    df = df[df.new_sourceline != 200141]
+    df = df[df.new_sourceline != 200142]
+    df.loc[df['new_sourceline'] == 200148, ['new_sourceline']] = 200140
+    df.loc[df['new_sourceline'] == 200151, ['new_sourceline']] = 200141
+    df.loc[df['new_sourceline'] == 200152, ['new_sourceline']] = 200142
     df = df.sort_values(['new_sourceline', 'seq']).reset_index(drop=True)
 
-    df.loc[df.index[266], ['new_sourceline']] = 100143
-    df.loc[df.index[267], ['new_sourceline']] = 100144
-    df.loc[df.index[268], ['new_sourceline']] = 100145
-    df.loc[df['new_sourceline'] == 100142, ['source']] = 'Standard'
+    # df.loc[df.index[266], ['new_sourceline']] = 200143
+    # df.loc[df.index[267], ['new_sourceline']] = 200144
+    # df.loc[df.index[268], ['new_sourceline']] = 200145
+    df.loc[df['new_sourceline'] == 200142, ['source']] = 'Standard'
 
-    df = df[df.new_sourceline != 100209]
-    df = df[df.new_sourceline != 100210]
-    df = df[df.new_sourceline != 100211]
-    df.loc[df['new_sourceline'] == 100221, ['new_sourceline']] = 100209
-    df.loc[df['new_sourceline'] == 100229, ['new_sourceline']] = 100210
-    df.loc[df['new_sourceline'] == 100230, ['new_sourceline']] = 100211
+    df = df[df.new_sourceline != 200209]
+    df = df[df.new_sourceline != 200210]
+    df = df[df.new_sourceline != 200211]
+    df.loc[df['new_sourceline'] == 200221, ['new_sourceline']] = 200209
+    df.loc[df['new_sourceline'] == 200229, ['new_sourceline']] = 200210
+    df.loc[df['new_sourceline'] == 200230, ['new_sourceline']] = 200211
 
-    df = df[df.new_sourceline != 100245]
-    df = df[df.new_sourceline != 100246]
-    df = df[df.new_sourceline != 100247]
-    df.loc[df['new_sourceline'] == 100253, ['new_sourceline']] = 100244
-    df.loc[df['new_sourceline'] == 100256, ['new_sourceline']] = 100245
-    df.loc[df['new_sourceline'] == 100257, ['new_sourceline']] = 100246
-    df.loc[df['new_sourceline'] == 100258, ['new_sourceline']] = 100247
-    df.loc[df['new_sourceline'] == 100250, ['new_sourceline']] = 100249
-    df.loc[df['new_sourceline'] == 100267, ['source']] = 'codelist'
+    df = df[df.new_sourceline != 200245]
+    df = df[df.new_sourceline != 200246]
+    df = df[df.new_sourceline != 200247]
+    df.loc[df['new_sourceline'] == 200253, ['new_sourceline']] = 200244
+    df.loc[df['new_sourceline'] == 200256, ['new_sourceline']] = 200245
+    df.loc[df['new_sourceline'] == 200257, ['new_sourceline']] = 200246
+    df.loc[df['new_sourceline'] == 200258, ['new_sourceline']] = 200247
+    df.loc[df['new_sourceline'] == 200250, ['new_sourceline']] = 200249
+    df.loc[df['new_sourceline'] == 200267, ['source']] = 'codelist'
+    
+    df.loc[df['new_sourceline'] == 630, ['source']] = 'Instruction'
 
     df = df.drop_duplicates()
     df = df.sort_values('new_sourceline').reset_index()
