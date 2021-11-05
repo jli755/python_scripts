@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-    Parse wave 2 html file:
+    Parse wave 2 html file, updated from parse wave1
 """
 
 from collections import OrderedDict
@@ -11,6 +11,29 @@ import pandas as pd
 import numpy as np
 import os
 import re
+
+
+def remove_unmatched_parentheses(input_string):
+    """
+    Remove unmatched parentheses from a string
+    """
+    output = ''
+    paren_depth = 0
+
+    for char in input_string:
+        if char == "(":
+            paren_depth += 1
+        elif char == ")":
+            paren_depth -= 1
+
+        if paren_depth > 0:
+            output = input_string.replace('(', '')
+        elif paren_depth < 0:
+            output = input_string.replace(')', '')
+        else:
+            output = input_string
+
+    return output
 
 
 def html_to_tree(htmlFile):
@@ -40,13 +63,12 @@ def get_class(tree, search_string, t='*'):
         else:
             search_string = 'Standard'
 
-        strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
-        s = strip_unicode.sub('', s)
-        
+        # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
+        # s = strip_unicode.sub('', s)
 
         if s:
-            dicts.append({"source": search_string, 
-                          "sourceline": elem.sourceline, 
+            dicts.append({"source": search_string,
+                          "sourceline": elem.sourceline,
                           "title": s})
     return pd.DataFrame(dicts)
 
@@ -58,12 +80,12 @@ def get_SequenceNumber(tree):
     dicts = []
     for elem in tree.xpath("//h1"):
         L = list(elem.itertext())
-        s = "".join(L).strip()        
-        strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
-        s = strip_unicode.sub('', s)
+        s = "".join(L).strip()
+        # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
+        # s = strip_unicode.sub('', s)
         if s:
-            dicts.append({"source": 'SequenceNumber', 
-                          "sourceline": elem.sourceline, 
+            dicts.append({"source": 'SequenceNumber',
+                          "sourceline": elem.sourceline,
                           "title": s})
     return pd.DataFrame(dicts)
 
@@ -75,17 +97,17 @@ def get_SectionNumber(tree):
     dicts = []
     for elem in tree.xpath("//h2"):
         L = list(elem.itertext())
-        s = "".join(L).strip()        
-        strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
-        s = strip_unicode.sub('', s)
+        s = "".join(L).strip()
+        # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
+        # s = strip_unicode.sub('', s)
 
         if s:
-            dicts.append({"source": 'SectionNumber', 
-                          "sourceline": elem.sourceline, 
+            dicts.append({"source": 'SectionNumber',
+                          "sourceline": elem.sourceline,
                           "title": s})
     return pd.DataFrame(dicts)
 
-	
+
 def get_questionnaire(tree):
     """
     combine individual parts, return questionnaire dataframe
@@ -101,13 +123,18 @@ def get_questionnaire(tree):
     df_Filter = get_class(tree, 'Filter')
     # listlevel with different number
     df_listlevel1WW8Num = get_class(tree, 'listlevel1WW8Num')
+
     # split string into multiple rows
-    df_listlevel = df_listlevel1WW8Num.assign(title=df_listlevel1WW8Num['title'].str.split('\n')).explode('title')
-    df_listlevel['seq'] = df_listlevel.groupby(['source', 'sourceline']).cumcount() + 1
-    df_listlevel['source'] = 'listlevel1WW8Num'
+    if df_listlevel1WW8Num.empty:
+        df_listlevel = df_listlevel1WW8Num
+    else:
+        df_listlevel = df_listlevel1WW8Num.assign(title=df_listlevel1WW8Num['title'].str.split('\n')).explode('title')
+        df_listlevel['seq'] = df_listlevel.groupby(['source', 'sourceline']).cumcount() + 1
+        df_listlevel['source'] = 'listlevel1WW8Num'
+
     df_NormalWeb = get_class(tree, 'NormalWeb')
-    
-    # df_Footnote = get_class(tree, 'Footnote')   
+
+    # df_Footnote = get_class(tree, 'Footnote')
     # df_FootnoteSymbol = get_class(tree, 'FootnoteSymbol')
 
     df = pd.concat([df_SequenceNumber,
@@ -121,26 +148,67 @@ def get_questionnaire(tree):
                     df_listlevel,
                     df_NormalWeb
                  ])
-    
-    df['seq'].fillna('0', inplace=True)
+
+    if 'seq' in df.columns:
+        df['seq'].fillna('0', inplace=True)
+    else:
+        df['seq'] = 0
 
     df.sort_values(by=['sourceline', 'seq'], inplace=True)
 
     df = df.apply(lambda x: x.replace('U+00A9',''))
 
-    df['source_new'] = df.apply(lambda row: 'codelist' if (row['title'][0].isdigit() == True and row['source'] in ['Standard', 'PlainText'])
+    # -1 for don't know and -92 for refused
+    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know|Dont Know|Don't Know).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse).*', x) != None else "99. Don't want to answer" if re.search(r"([0-9]*.*don't want to answer|Don't want to answer).*", x) != None else x)
+
+    df.drop('title', axis=1, inplace=True)
+    df.rename(columns={'title_m': 'title'}, inplace=True)
+
+    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText'])
+                                            else 'codelist' if row['source'] == 'listlevel1WW8Num'
                                             else 'Instruction' if row['title'].lower().startswith('show')
+                                            else 'Instruction' if row['title'].lower().startswith('press')
+                                            else 'Instruction' if row['title'].lower().startswith('enter')
                                             else 'Instruction' if row['title'].lower().startswith('- ')
-                                            else 'Instruction' if row['title'].startswith('TO BE ASKED OF')
+                                            else 'Instruction' if row['title'].lower().startswith('multicoded')
+                                            # All text which starts with upper case words should be added to instructions
+                                            else 'Instruction' if (len(row['title'].split(' ')) > 1 and row['source'] in ['Standard', 'PlainText'] and row['title'].split(' ')[0].upper() == row['title'].split(' ')[0] and not row['title'].startswith('{') and not row['title'].startswith('(') and not row['title'].startswith('*') and not row['title'].startswith('...') and not row['title'].startswith('I ')) 
+                                            # Open answer should be a response domain Generic text rather than used/added to question literal.
+                                            # Open type: long verbatim answer is the response domain Long text
+                                            else 'Response' if row['title'].lower().startswith('open')
+                                            # Hours 0-XX is a response domain which should be labelled Range: 0-50
+                                            else 'Response' if row['title'].lower().startswith('hours')
+                                            else 'Standard' if 'ask all' in row['title']
                                             else row['source'], axis=1)
 
+    # assign code list group
+    df['code_group'] = df['source_new'].ne(df['source_new'].shift()).cumsum()
+    df['sequence'] = df.groupby('code_group').cumcount() + 1
 
-    df['seq_new'] = df.apply(lambda row: re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist') else row['seq'], axis=1)
+    df['seq_new_code'] = df.apply(lambda row: re.search(r'-\d+', row['title']).group() if (row['source_new'] == 'codelist' and row['title'][0] == '-') 
+                                              else re.search(r'\d+', row['title']).group() if (row['source_new'] == 'codelist' and row['title'][0].isdigit() == True) else row['seq'], 
+                                              axis=1)
 
-    df.drop(['source', 'seq'], axis=1, inplace=True)
-    df['source'] = df.apply(lambda row: row['source_new'] if row['source_new'] != 'listlevel1WW8Num' else 'codelist' , axis=1) 
-    df['seq'] = df['seq_new']
-    df.drop(['source_new', 'seq_new'], axis=1, inplace=True)
+    df['seq_new'] = df.apply(lambda row: row['seq_new_code'] if (row['source_new'] == 'codelist' and row['title'][0].isdigit() == True) else row['sequence'] if (row['source_new'] == 'codelist' and row['title'][0] == '-') else row['seq'], axis=1)
+
+    df['seq_new'] = df['seq_new'].astype(int)
+
+    df['seq_new_shift'] = df['seq_new'].shift(1).fillna(0).astype(int)
+    df['seq_new_shift_2'] = df['seq_new'].shift(2).fillna(0).astype(int)
+
+    df['seq_new_code_shift'] = df['seq_new_code'].shift(1).fillna(0).astype(int)
+
+    df['seq_new_code'] = df['seq_new_code'].astype(int)
+    #print(df.dtypes)
+
+    df['seq_attemp'] = df.apply(lambda row: row['seq_new_shift'] + 1 if (row['seq_new_shift'] > row['seq_new'] and row['seq_new_code'] < 0 and row['seq_new_code_shift'] > 0) 
+                                            else row['seq_new_shift_2'] + 2 if (row['seq_new_code'] < 0 and row['seq_new_code_shift'] < 0) 
+                                            else row['seq_new'], axis=1)
+
+    df.drop(['source', 'seq', 'code_group', 'sequence', 'seq_new_code', 'seq_new', 'seq_new_shift', 'seq_new_shift_2', 'seq_new_code_shift'], axis=1, inplace=True)
+    df['source'] = df.apply(lambda row: row['source_new'] if row['source_new'] != 'listlevel1WW8Num' else 'codelist' , axis=1)
+    df['seq'] = df['seq_attemp']
+    df.drop(['source_new', 'seq_attemp'], axis=1, inplace=True)
 
     df = df[pd.notnull(df['title'])]
 
@@ -148,48 +216,43 @@ def get_questionnaire(tree):
     df['title'] = df['title'].str.strip()
     df.drop_duplicates(keep = 'first', inplace = True)
 
-    
-    # remove {Ask all}, Refused, Dont know, Dont Know
-    new_df_1 = df[~df['title'].str.lower().str.contains('ask all')]
-    new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
+    # remove {ask all}, Refused, Dont know, Dont Know
+###    new_df_1 = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
+
+    # remove refused/dont know
+###    new_df = new_df_1.loc[(new_df_1['title'] != 'Refused') & (new_df_1['title'] != 'Dont know') & (new_df_1['title'] != 'Dont Know'), :]
+
+    new_df = df
     # special case:
-    new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|\(If|{ If|If claiming sickness', row['title'], re.IGNORECASE)) 
-else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE)) 
-else row['source'], axis=1)
-    new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) or ('{Ask for each' in row['title'])) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
-
-
+    #new_df['condition_source'] = new_df.apply(lambda row: 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|{ If|If claiming sickness|\(If Repred|\(If Ben1|\(IF HEPOSS9 = 1-3\)|If wrk1a', row['title'], re.IGNORECASE)) 
+#else 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP', row['title'], re.IGNORECASE))
+#else row['source'], axis=1)
+    new_df['condition_source'] = new_df.apply(lambda row: 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP|{Record for each|{Ask for each|{For each|{Ask for all', row['title'], re.IGNORECASE)) else 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|{ If|If claiming sickness|\(If Repred|\(If Ben1|\(IF HEPOSS9 = 1-3\)|If wrk1a', row['title'], re.IGNORECASE)) else row['source'], axis=1)
+    new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) ) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
 
     question_list = ['Hdob']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
-    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|OPEN ENDED|ENTER DATE|DATETYPE|ENTER|Enter|DATETYPE', row['title'])) & ~(row['question_source'] in ('Instruction', 'Loop'))
-else 'Response' if row['title'].lower().startswith('enter ') else row['question_source'], axis=1)
+    new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop')) else row['question_source'], axis=1)
 
     new_df.drop(['source', 'condition_source', 'new_source', 'question_source'], axis=1, inplace=True)
 
     new_df.rename(columns={'response_source': 'source'}, inplace=True)
 
     # request 1: Change all text response domains to 'Generic text'
-    new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] == 'ENTER DATE'
-                                                   else 1 if row['source'] == 'Response' and any(re.findall(r'Open answer|OPEN ENDED|ENTER|Enter', row['title']))
+    new_df['Type_text'] = new_df.apply(lambda row: 2 if row['source'] == 'Response' and row['title'] =='ENTER DATE'
                                                    else 0, axis=1)
 
-    for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist(): 
+    for i in new_df.loc[(new_df['Type_text'] == 2), :]['sourceline'].tolist():
         new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
         new_df.loc[len(new_df)] = [i+0.5, 'DATETYPE', 0, 'Response', 0]
 
-    for i in new_df.loc[(new_df['Type_text'] == 1), :]['sourceline'].tolist(): 
-        new_df.loc[new_df['sourceline'] == i, ['source']] = 'Standard'
-        new_df.loc[len(new_df)] = [i+0.5, 'Generic text', 0, 'Response', 0]
-
     new_df_sorted = new_df.sort_values(['sourceline'])
-
     new_df_sorted.drop(['Type_text'], axis=1, inplace=True)
 
     return new_df_sorted
 
- 
+
 def f(string, match):
     """
     Find a word containts '/' in a string
@@ -204,7 +267,7 @@ def f(string, match):
 
 def get_question_grids(df):
     """
-    Build questions table 
+    Build questions table
         - sourceline
         - Label
         - Literal
@@ -213,19 +276,7 @@ def get_question_grids(df):
         - vertical_code_list_name
         - source
     """
-
     df = df[df.title != '']
-
-    df.loc[df['sourceline'] == 285, ['source']] = 'codelist'
-    df.loc[df['sourceline'] == 286, ['source']] = 'codelist'
-    df.loc[df['sourceline'] == 287, ['source']] = 'codelist'
-    df.loc[df['sourceline'] == 288, ['source']] = 'codelist'
-
-    df.loc[df['sourceline'] == 285, ['seq']] = 1
-    df.loc[df['sourceline'] == 286, ['seq']] = 2
-    df.loc[df['sourceline'] == 287, ['seq']] = 3
-    df.loc[df['sourceline'] == 288, ['seq']] = 4
-
 
     df_name = df.loc[(df['source'] == 'SectionNumber'), ['title', 'questions', 'sourceline']]
 
@@ -243,24 +294,25 @@ def get_question_grids(df):
     df_question_grids['horizontal_code_list_name'] = 'cs_horizontal_' + df_question_grids['questions']
     df_question_grids['Label'] = 'qg_' + df_question_grids['questions']
     df_question_grids = df_question_grids[['Label', 'Literal', 'Instructions', 'horizontal_code_list_name', 'vertical_code_list_name', 'sourceline']]
-    
+
     df_qg_codelist = df.loc[(df['source'] == 'codelist'), ['questions', 'sourceline', 'title', 'seq']]
     df_qg_codelist = df_qg_codelist.sort_values(['sourceline', 'seq'])
     df_qg_size = df.groupby(['sourceline']).size().reset_index(name='counts')
     df_qg_codelist_size = df_qg_codelist.merge(df_qg_size, how='left', on='sourceline')
 
-    # vertical code 
+    # vertical code
     df_qg_vertical = df_qg_codelist_size.loc[(df_qg_codelist_size['counts'] == 2), :]
     df_qg_vertical.loc[df_qg_vertical['seq'] == 3, ['seq']] = 2
-   
+
     df_qg_vertical['vertical_code_list_name'] = 'cs_vertical_' + df_qg_vertical['questions']
     df_qg_vertical.drop(['questions', 'counts'], axis=1, inplace=True)
     df_qg_vertical.rename(columns={'title': 'Category', 'sourceline':'Number', 'seq': 'codes_order', 'vertical_code_list_name': 'Label'}, inplace=True)
     df_qg_vertical['value'] = df_qg_vertical['codes_order']
     df_qg_vertical = df_qg_vertical[['Number', 'codes_order', 'Label', 'value', 'Category']]
 
-    # horizontal code 
+    # horizontal code
     df_qg_horizontal = df_qg_codelist_size.loc[(df_qg_codelist_size['counts'] != 2), :]
+
     df_qg_horizontal['horizontal_code_list_name'] = 'cs_horizontal_' + df_qg_horizontal['questions']
     df_qg_horizontal.drop(['questions', 'counts'], axis=1, inplace=True)
     df_qg_horizontal.rename(columns={'title': 'Category', 'sourceline':'Number', 'seq': 'codes_order', 'horizontal_code_list_name': 'Label'}, inplace=True)
@@ -276,7 +328,7 @@ def get_question_grids(df):
 
 def get_question_items(df):
     """
-    Build questions table 
+    Build questions table
         - Label
         - Literal
         - Instructions
@@ -288,8 +340,8 @@ def get_question_items(df):
     """
 
     # find each question
-    df_question_name = df.loc[(df.source == 'SectionNumber'), ['sourceline', 'questions']]
-    
+    df_question_name = df.loc[(df.source == 'SectionNumber'), ['sourceline', 'questions', 'Interviewee']]
+
     df_question_literal = df.loc[df['source'] == 'Standard', ['questions', 'title']]
     df_question_literal_combine = df_question_literal.groupby('questions')['title'].apply('\n'.join).reset_index()
 
@@ -307,7 +359,7 @@ def get_question_items(df):
     # responds
     # 1. codelist
     df_question_code = df.loc[df['source'] == 'codelist', ['questions']].drop_duplicates()
-    df_question_code['Response'] = 'cs_' + df_question_code['questions']
+    df_question_code['Response'] = 'cs_q' + df_question_code['questions']
 
     # 2. Response
     df_question_response = df.loc[df['source'] == 'Response', ['questions', 'title']].drop_duplicates()
@@ -320,19 +372,26 @@ def get_question_items(df):
 
     # all questions
     df_question_all.sort_values(by=['sourceline'], inplace=True)
-    
+
     df_question_all['source'] = 'question'
     df_question_all['Label'] = 'qi_' + df_question_all['questions']
-   # df_question_all['Label'] = df_question_all.groupby('questions').questions.apply(lambda n: 'qi_' + n.str.strip() + '_' + (np.arange(len(n))).astype(str))
-   # df_question_all['Label'] = df_question_all['Label'].str.strip('_0')
+    # df_question_all['Label'] = df_question_all.groupby('questions').questions.apply(lambda n: 'qi_' + n.str.strip() + '_' + (np.arange(len(n))).astype(str))
+    # df_question_all['Label'] = df_question_all['Label'].str.strip('_0')
 
-    df_question_all = df_question_all.drop_duplicates(subset=['Label'], keep='first')
-    
-    # request 3: If there is no question literal, can we add the instruction text to the literal instead?
-    df_question_all.loc[df_question_all['Literal'].isnull(),'Literal'] = df_question_all['Instructions']
+    df_question_all = df_question_all.drop_duplicates(subset=['Label', 'Response'], keep='first')
+    # rd_order: codelist last for mixed response
+    df_question_all = df_question_all.sort_values(by=['Label', 'Response'], ascending=False)
+
+    # add response order
+    df_question_all['rd_order']=df_question_all.sort_values(('Response'), ascending=False).groupby('Label').cumcount() + 1
+    #df_question_all.to_csv('tmp_qi.csv')
+    # request 3: If there is no question literal, can we add the instruction text to the literal instead
+    # remove it from instruction afterwards
+    df_question_all.loc[df_question_all['Literal'].isnull(), 'Literal'] = df_question_all['Instructions']
+    df_question_all.loc[df_question_all['Literal'] == df_question_all['Instructions'], 'Instructions'] = None
 
     return df_question_all
- 
+
 
 def int_to_roman(num):
 
@@ -362,18 +421,20 @@ def int_to_roman(num):
         return "0"
     else:
         return "".join([a for a in roman_num(num)])
-   
+
 
 def get_conditions(df):
     """
     Build conditions table 
     """
-    df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title']]
 
     # if can not parse (a=b), use the name of the NEXT question
-    df_conditions['next_question'] = df_conditions['questions'].shift(-1)
+    df['next_question'] = df['questions'].shift(-1)
+    print(df)
+    print(df.columns)
+    df_conditions = df.loc[(df.source == 'Condition'), ['sourceline', 'questions', 'title', 'condition_end', 'next_question']]
 
-    df_conditions['Logic_name'] = df_conditions['title'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x) ) 
+    df_conditions['Logic_name'] = df_conditions['title'].apply(lambda x: re.findall(r"(\w+) *(=|>|<)", x) )
     df_conditions['Logic_name1'] = df_conditions['Logic_name'].apply(lambda x: '' if len(x) ==0 else x[0][0])
 
 
@@ -383,7 +444,7 @@ def get_conditions(df):
 
     df_conditions['tmp'] = df_conditions.groupby('Logic_name3')['Logic_name3'].transform('count')
     df_conditions['tmp2'] = df_conditions.groupby('Logic_name3').cumcount() + 1
-    
+
     df_conditions['Logic_name_new'] = df_conditions['Logic_name3'].str.cat(df_conditions['tmp2'].astype(str), sep="_")
 
     df_conditions['Logic_c'] = df_conditions['title'].apply(lambda x: re.findall('\((?<=\().*(?=\))\)', x))
@@ -391,36 +452,49 @@ def get_conditions(df):
     df_conditions['Logic_c1'] = df_conditions['Logic_c'].apply(lambda x: '' if len(x) ==0 else x[0])
 
     # special case: "if a=b" without ()
-    df_conditions['Logic_c2'] = df_conditions.apply(lambda row: row['Logic_c1'] if len(row['Logic_c1']) > 0 
-        else (row['Logic_name1'] + re.search(r"(?:{})(.*)".format(row['Logic_name1']), row['title']).group(1)).rstrip('}').rstrip(' ') if len(row['Logic_name1']) > 0 
+    df_conditions['Logic_c2'] = df_conditions.apply(lambda row: row['Logic_c1'] if len(row['Logic_c1']) > 0
+        else (row['Logic_name1'] + re.search(r"(?:{})(.*)".format(row['Logic_name1']), row['title']).group(1)).rstrip('}').rstrip(' ') if len(row['Logic_name1']) > 0
         else '', axis=1)
+
     # remove some string, only keep () or () and ()
     # df_conditions['Logic_c3'] = df_conditions['Logic_c1'].apply(lambda x: ''.join(re.findall('\(.*?\)| or | and | OR | AND ', x)))
 
     df_conditions['Logic_r'] = df_conditions['Logic_c2'].str.replace('=', ' == ').str.replace('<>', ' != ').str.replace(' OR ', ' || ').str.replace(' AND ', ' && ').str.replace(' or ', ' || ').str.replace(' and ', ' && ')
 
+    # Remove unmatched parentheses from a string, replace {}
+    df_conditions['Logic_r1'] = df_conditions['Logic_r'].str.replace('{', '').str.replace('}', '')
+    df_conditions['Logic_r2'] = df_conditions['Logic_r1'].apply(lambda x: remove_unmatched_parentheses(x))
+
+    # reform logic: qc_EthGrp == 3, 7, 11, 14 || 16 will be qc_EthGrp == 3 || qc_EthGrp == 7 || qc_EthGrp == 14 || qc_EthGrp == 16
+    df_conditions['Logic_reform_num'] = df_conditions['Logic_r2'].apply(lambda x: re.findall(r"(\d+)", x) )
+    df_conditions['Logic_reform_equal'] = df_conditions['Logic_r2'].apply(lambda x: re.findall(r"(&&|\|\|)", x) )
+    df_conditions['Logic_reform_begin'] = df_conditions['Logic_r2'].apply(lambda x: re.findall(r"(\w+) *(==|!=)", x) )
+
+    df_conditions['Logic_reform'] = df_conditions.apply(lambda row: (' '+ row['Logic_reform_equal'][0] + ' ').join([' '.join(row['Logic_reform_begin'][0]) + ' ' + s for s in row['Logic_reform_num']])
+                                                                     if len(row['Logic_reform_equal']) != 0 and len(row['Logic_reform_num']) != 0 and len(row['Logic_reform_begin']) != 0
+                                                                     else row['Logic_r2'], axis = 1)
     df_conditions['Logic_name_roman_1'] = df_conditions['Logic_name_new'].apply(lambda x: '_'.join([x.split('_')[0], int_to_roman(int(x.split('_')[1]))]))
 
     df_conditions['Logic_name_roman'] = df_conditions.apply(lambda row: row['Logic_name_roman_1'].strip('_i') if row['tmp'] == 1 else row['Logic_name_roman_1'], axis=1)
- 
+
     df_conditions['Label'] = 'c_q' + df_conditions['Logic_name_roman']
 
 
     def add_string_qc(text, replace_text_list):
-        for item in replace_text_list: 
-            if item in text: 
-                text = text.replace(item, 'qc_' + item)  
-        return text 
+        for item in replace_text_list:
+            if item in text:
+                text = text.replace(item, 'qc_' + item)
+        return text
 
     # rename inside 'logic', add qc_ to all question names inside the literal
-    df_conditions['Logic'] = df_conditions.apply(lambda row: add_string_qc(row['Logic_r'], [s[0] for s in row['Logic_name']]) if row['Logic_name'] != [] else row['Logic_r'], axis = 1)
+    df_conditions['Logic'] = df_conditions.apply(lambda row: add_string_qc(row['Logic_reform'], [s[0] for s in row['Logic_name']]) if row['Logic_name'] != [] else row['Logic_reform'], axis = 1)
 
     df_conditions.rename(columns={'title': 'Literal'}, inplace=True)
     #df_conditions = df_conditions.drop(['Logic_c', 'Logic_c1', 'Logic_c3', 'Logic_r', 'Logic_name', 'Logic_name1', 'tmp', 'tmp2', 'Logic_name2', 'Logic_name3', 'Logic_name_new', 'Logic_name_roman', 'Logic_name_roman_1'], 1)
 
     return df_conditions
- 
-  
+
+
 def get_loops(df):
     """
     Build loops table: 
@@ -429,7 +503,7 @@ def get_loops(df):
 
     col_names =  ['Label', 'Variable', 'Start Value', 'End Value', 'Loop While', 'Logic']
     df_loops  = pd.DataFrame(columns = col_names)
-    
+
     df_loops.loc[len(df_loops)] = ['l_Hdob', 'Hdob', 526, 560, 'Ask for each hhold member excluding the sampled YP', 'for each hhold member excluding the sampled YP']
     df_loops.loc[len(df_loops)] = ['l_Household', 'Household', 566, 814, 'Ask for each NEW household member', 'for each NEW household member']
     df_loops.loc[len(df_loops)] = ['l_NewHousehold', 'NewHousehold', 814, 852, 'Ask for each NEW household member OR HHgrid not completed in W1', 'for each NEW household member OR HHgrid not completed in W1']
@@ -438,7 +512,7 @@ def get_loops(df):
 
 
     return df_loops
- 
+
 
 def find_parent(start, stop, df_mapping, source, section_label):
     """
@@ -458,13 +532,13 @@ def find_parent(start, stop, df_mapping, source, section_label):
         return df_r['Label']
     else:
         return section_label
-   
+
 
 def isNaN(num):
     return num != num
 
 
-def get_statements(df):    
+def get_statements(df):
     """
         Create Statement table: Label,above_label,parent_type,branch,Position,Literal
 
@@ -472,26 +546,35 @@ def get_statements(df):
     df_statement = df.loc[:, ['title', 'sourceline']].reset_index()
     df_statement.rename(columns={'title': 'Literal'}, inplace=True)
     df_statement['ind'] = df_statement.index + 1
-    df_statement['Label'] = 'statement_' + df_statement['ind'].astype(str) 
+    df_statement['Label'] = 'statement_' + df_statement['ind'].astype(str)
     df_statement = df_statement.drop('ind', 1)
 
     return df_statement
 
+#if True:
 def main():
     input_dir = '../LSYPE1/wave2-html'
     html_names = ['W2_household - Questionnaire.htm', 'W2_main_parent - Questionnaire.htm', 'W2_young_person - Questionnaire.htm']
 
+    output_dir = os.path.join(input_dir, 'wave2_parsed')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     appended_data = []
     for idx, val in enumerate(html_names):
+
         if idx == 0:
             section_name = 'HOUSEHOLD RESPONDENT SECTION'
             line_start = 70
+            interviewee = 'Main parent of cohort/sample member'
         elif idx == 1:
             section_name = 'MAIN/INDIVIDUAL PARENT SECTION'
             line_start = 111.5
+            interviewee = 'Main parent of cohort/sample member'
         else:
             section_name = 'YOUNG PERSON SECTION'
             line_start = 94
+            interviewee = 'Cohort/sample member'
 
         htmlFile = os.path.join(input_dir, val)
         tree = html_to_tree(htmlFile)
@@ -500,88 +583,92 @@ def main():
         # print(title)
 
         df_q = get_questionnaire(tree)
-        
+
         # add section line
-        # sourceline	section_name	seq	source	
-        df_q.loc[-1] = [line_start, section_name, 0, 'Section']  # adding a row
+        # sourceline	section_name	seq	source
+        df_q.loc[len(df_q)] = [line_start, section_name, 0, 'Section']  # adding a row
         df_q = df_q.sort_values('sourceline')
- 
+
         # actual questionnaire
         df_q = df_q.loc[(df_q.sourceline >= line_start) , :]
 
         df_q['new_sourceline'] = df_q['sourceline'] + 100000*idx
+        df_q['Interviewee'] = interviewee
+        df_q['section_name'] = section_name
 
         df_q.to_csv('../LSYPE1/wave2-html/{}.csv'.format(idx), sep= ';', encoding = 'utf-8', index=False)
         appended_data.append(df_q)
     df = pd.concat(appended_data)
+    df.to_csv('DF.csv', sep='\t')
 
-    df.at[df['new_sourceline'] == 115, 'title'] = '3. NHS/Health trust or other establishment providing nursing care'
+    # manual fix
+    df.loc[df['new_sourceline'] == 115, ['title']] = '3. NHS/Health trust or other establishment providing nursing care'
     df = df[df.new_sourceline != 116]
 
     # manual change: add "white", "mix" to the codelist string
-    df.at[df['new_sourceline'] == 472, 'title'] = '1. White: White - British'
-    df.at[df['new_sourceline'] == 473, 'title'] = '2. White: White - Irish'
-    df.at[df['new_sourceline'] == 474, 'title'] = '3. White: Any other White background (specify)'
+    df.loc[df['new_sourceline'] == 472, ['title']] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 473, ['title']] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 474, ['title']] = '3. White: Any other White background (specify)'
     df = df[df.new_sourceline != 469]
-    df.at[df['new_sourceline'] == 480, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.at[df['new_sourceline'] == 481, 'title'] = '5. Mixed: White and Black African'
-    df.at[df['new_sourceline'] == 482, 'title'] = '6. Mixed: White and Asian'
-    df.at[df['new_sourceline'] == 483, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df.loc[df['new_sourceline'] == 480, ['title']] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 481, ['title']] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 482, ['title']] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 483, ['title']] = '7. Mixed: Any other mixed background (specify)'
     df = df[df.new_sourceline != 476]
-    df.at[df['new_sourceline'] == 489, 'title'] = '8. Asian or Asian British: Indian'
-    df.at[df['new_sourceline'] == 490, 'title'] = '9. Asian or Asian British: Pakistani'
-    df.at[df['new_sourceline'] == 491, 'title'] = '10. Asian or Asian British: Bangladeshi'
-    df.at[df['new_sourceline'] == 492, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
+    df.loc[df['new_sourceline'] == 489, ['title']] = '8. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 490, ['title']] = '9. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 491, ['title']] = '10. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 492, ['title']] = '11. Asian or Asian British: Any other Asian background (specify)'
     df = df[df.new_sourceline != 485]
-    df.at[df['new_sourceline'] == 498, 'title'] = '12. Black or Black British: Caribbean'
-    df.at[df['new_sourceline'] == 499, 'title'] = '13. Black or Black British: African'
-    df.at[df['new_sourceline'] == 500, 'title'] = '14. Black or Black British: Any other Black background (specify)'
+    df.loc[df['new_sourceline'] == 498, ['title']] = '12. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 499, ['title']] = '13. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 500, ['title']] = '14. Black or Black British: Any other Black background (specify)'
     df = df[df.new_sourceline != 494]
-    df.at[df['new_sourceline'] == 504, 'title'] = '15. Chinese'
-    df.at[df['new_sourceline'] == 505, 'title'] = '16. Any other (specify)'
+    df.loc[df['new_sourceline'] == 504, ['title']] = '15. Chinese'
+    df.loc[df['new_sourceline'] == 505, ['title']] = '16. Any other (specify)'
 
-    df.at[df['new_sourceline'] == 768, 'title'] = '1. White: White - British'
-    df.at[df['new_sourceline'] == 769, 'title'] = '2. White: White - Irish'
-    df.at[df['new_sourceline'] == 770, 'title'] = '3. White: Any other White background (specify)'
+    df.loc[df['new_sourceline'] == 768, ['title']] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 769, ['title']] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 770, ['title']] = '3. White: Any other White background (specify)'
     df = df[df.new_sourceline != 766]
-    df.at[df['new_sourceline'] == 774, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.at[df['new_sourceline'] == 775, 'title'] = '5. Mixed: White and Black African'
-    df.at[df['new_sourceline'] == 776, 'title'] = '6. Mixed: White and Asian'
-    df.at[df['new_sourceline'] == 777, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df.loc[df['new_sourceline'] == 774, ['title']] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 775, ['title']] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 776, ['title']] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 777, ['title']] = '7. Mixed: Any other mixed background (specify)'
     df = df[df.new_sourceline != 772]
-    df.at[df['new_sourceline'] == 781, 'title'] = '8. Asian or Asian British: Indian'
-    df.at[df['new_sourceline'] == 782, 'title'] = '9. Asian or Asian British: Pakistani'
-    df.at[df['new_sourceline'] == 783, 'title'] = '10. Asian or Asian British: Bangladeshi'
-    df.at[df['new_sourceline'] == 784, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
+    df.loc[df['new_sourceline'] == 781, ['title']] = '8. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 782, ['title']] = '9. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 783, ['title']] = '10. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 784, ['title']] = '11. Asian or Asian British: Any other Asian background (specify)'
     df = df[df.new_sourceline != 779]
-    df.at[df['new_sourceline'] == 788, 'title'] = '12. Black or Black British: Caribbean'
-    df.at[df['new_sourceline'] == 789, 'title'] = '13. Black or Black British: African'
-    df.at[df['new_sourceline'] == 790, 'title'] = '14. Black or Black British: Any other Black background (specify)'
+    df.loc[df['new_sourceline'] == 788, ['title']] = '12. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 789, ['title']] = '13. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 790, ['title']] = '14. Black or Black British: Any other Black background (specify)'
     df = df[df.new_sourceline != 786]
-    df.at[df['new_sourceline'] == 794, 'title'] = '15. Chinese or Other ethnic group: Chinese'
-    df.at[df['new_sourceline'] == 795, 'title'] = '16. Chinese or Other ethnic group: Any other'
+    df.loc[df['new_sourceline'] == 794, ['title']] = '15. Chinese or Other ethnic group: Chinese'
+    df.loc[df['new_sourceline'] == 795, ['title']] = '16. Chinese or Other ethnic group: Any other'
     df = df[df.new_sourceline != 792]
 
-    df.at[df['new_sourceline'] == 200302, 'title'] = '1. White: White - British'
-    df.at[df['new_sourceline'] == 200303, 'title'] = '2. White: White - Irish'
-    df.at[df['new_sourceline'] == 200304, 'title'] = '3. White: Any other White background (specify)'
+    df.loc[df['new_sourceline'] == 200302, ['title']] = '1. White: White - British'
+    df.loc[df['new_sourceline'] == 200303, ['title']] = '2. White: White - Irish'
+    df.loc[df['new_sourceline'] == 200304, ['title']] = '3. White: Any other White background (specify)'
     df = df[df.new_sourceline != 200299]
-    df.at[df['new_sourceline'] == 200310, 'title'] = '4. Mixed: White and Black Caribbean'
-    df.at[df['new_sourceline'] == 200311, 'title'] = '5. Mixed: White and Black African'
-    df.at[df['new_sourceline'] == 200312, 'title'] = '6. Mixed: White and Asian'
-    df.at[df['new_sourceline'] == 200313, 'title'] = '7. Mixed: Any other mixed background (specify)'
+    df.loc[df['new_sourceline'] == 200310, ['title']] = '4. Mixed: White and Black Caribbean'
+    df.loc[df['new_sourceline'] == 200311, ['title']] = '5. Mixed: White and Black African'
+    df.loc[df['new_sourceline'] == 200312, ['title']] = '6. Mixed: White and Asian'
+    df.loc[df['new_sourceline'] == 200313, ['title']] = '7. Mixed: Any other mixed background (specify)'
     df = df[df.new_sourceline != 200306]
-    df.at[df['new_sourceline'] == 200319, 'title'] = '8. Asian or Asian British: Indian'
-    df.at[df['new_sourceline'] == 200320, 'title'] = '9. Asian or Asian British: Pakistani'
-    df.at[df['new_sourceline'] == 200321, 'title'] = '10. Asian or Asian British: Bangladeshi'
-    df.at[df['new_sourceline'] == 200322, 'title'] = '11. Asian or Asian British: Any other Asian background (specify)'
+    df.loc[df['new_sourceline'] == 200319, ['title']] = '8. Asian or Asian British: Indian'
+    df.loc[df['new_sourceline'] == 200320, ['title']] = '9. Asian or Asian British: Pakistani'
+    df.loc[df['new_sourceline'] == 200321, ['title']] = '10. Asian or Asian British: Bangladeshi'
+    df.loc[df['new_sourceline'] == 200322, ['title']] = '11. Asian or Asian British: Any other Asian background (specify)'
     df = df[df.new_sourceline != 200315]
-    df.at[df['new_sourceline'] == 200328, 'title'] = '12. Black or Black British: Caribbean'
-    df.at[df['new_sourceline'] == 200329, 'title'] = '13. Black or Black British: African'
-    df.at[df['new_sourceline'] == 200330, 'title'] = '14. Black or Black British: Any other Black background (specify)'
+    df.loc[df['new_sourceline'] == 200328, ['title']] = '12. Black or Black British: Caribbean'
+    df.loc[df['new_sourceline'] == 200329, ['title']] = '13. Black or Black British: African'
+    df.loc[df['new_sourceline'] == 200330, ['title']] = '14. Black or Black British: Any other Black background (specify)'
     df = df[df.new_sourceline != 200324]
-    df.at[df['new_sourceline'] == 200334, 'title'] = '15. Chinese'
-    df.at[df['new_sourceline'] == 200335, 'title'] = '16. Any other (specify)'
+    df.loc[df['new_sourceline'] == 200334, ['title']] = '15. Chinese'
+    df.loc[df['new_sourceline'] == 200335, ['title']] = '16. Any other (specify)'
 
     df.loc[df['new_sourceline'] == 155, ['source']] = 'SectionNumber'
     df.loc[df['new_sourceline'] == 251, ['source']] = 'Instruction'
@@ -620,7 +707,29 @@ def main():
     df.loc[df['new_sourceline'] == 203750, ['source']] = 'Standard'
     df.loc[df['new_sourceline'] == 203751, ['source']] = 'Standard'
 
+    df = df.drop_duplicates()
+    df = df.sort_values('new_sourceline').reset_index()
 
+    #TODO
+    # remove duplicated conditions.
+    # If there are two conditions with the same text e.g. Extrat5 and Extrat6 can the second one be ignored and the questask allions inside it be added to the first condition instead?
+    df = pd.concat([df.loc[df.source != 'Condition'],
+                    df.loc[(df.source == 'Condition') & (df.title.str.contains(r'ask all', case=False)) ],
+                    df.loc[(df.source == 'Condition') & (~ df.title.str.contains(r'ask all', na=False, case=False)) ].drop_duplicates(['title'],keep='first')]).sort_index()
+
+    # condition end at the next <ask all>
+    # 1. find all <ask all> locations
+    next_q = df.loc[(df['title'].str.contains(r'ask all', case=False)) | ( df['source'] == 'SequenceNumber' ), 'new_sourceline'].to_list()
+    # print(next_q)
+    df['condition_end'] = df.apply(lambda row: min( [y for y in next_q if y - row['new_sourceline'] > 0] )
+                                               if (row['new_sourceline'] <  max(next_q) and row['source'] == 'Condition')
+                                               else None, axis=1)
+
+    #df.to_csv('tmp_sourceline.csv', sep='\t')
+
+    # remove {ask all}
+    # df = df[~(df['title'].str.contains(r'ask all', case=False))]
+    df = df[~(df['title'].str.lower().isin(['{ask all}', '{ask all)', '{ ask all )', '{ask all }', '{ask all)}', '{ask all)l}']))]
 
     # rename duplicated question names
     df['tmp'] = df.groupby('title').cumcount() 
@@ -630,7 +739,7 @@ def main():
     # find each question
     df['questions'] = df.apply(lambda row: row['title_new'] if row['source'] in ['SectionNumber'] else None, axis=1)
     df['questions'] = df['questions'].ffill()
-    
+
     df.drop(['tmp', 'sourceline', 'title'], axis=1, inplace=True)
     df.rename(columns={'new_sourceline': 'sourceline', 'title_new': 'title'}, inplace=True)
 
@@ -639,34 +748,45 @@ def main():
     df.sort_values('sourceline').to_csv('../LSYPE1/wave2-html/w2_attempt.csv', sep= ';', encoding = 'utf-8', index=False)
 
 
-
-    question_grid_names = ['Rchka']
-
     # 1. Codes
-    df_codes = df.loc[(df.source == 'codelist') & (~df.questions.isin(question_grid_names)), ['questions', 'sourceline', 'seq', 'title']]
+    df_codes = df.loc[(df.source == 'codelist'), ['questions', 'sourceline', 'seq', 'title']]
     # label
-    df_codes['Label'] = 'cs_' + df_codes['questions']
+    df_codes['Label'] = 'cs_q' + df_codes['questions']
     df_codes.rename(columns={'sourceline': 'Number', 'seq': 'codes_order'}, inplace=True)
-    df_codes['value'] = df_codes['codes_order']
+    #df_codes['value'] = df_codes['codes_order']
+    df_codes['value'] = df_codes.apply(lambda row: row['title'].split('. ')[0] if '-' in row['title'] or '. ' in row['title'] else row['codes_order'], axis=1)
 
     # strip number. out from title
-    df_codes['Category'] = df_codes['title'].apply(lambda x: re.sub('^\d+', '', x).strip('.').strip(',').strip(' '))
-    df_codes_out = df_codes.drop(['questions', 'title'], 1)
+    df_codes['Category_old'] = df_codes['title'].apply(lambda x: re.sub('^-*\d+', '', x).strip('.').strip(',').strip(' '))
 
-    # need to add codes from question grid before write out
-    #df_codes_out.to_csv('../LSYPE1/wave2-html/codes.csv', encoding = 'utf-8', index=False, sep=';')	
+    # ignore the GOTO…. in categories
+    df_codes['Category'] = df_codes['Category_old'].apply(lambda x: x[:x.index("GOTO")].rstrip() if 'GOTO' in x else x)
 
-    # 2. Response: numeric, text, datetime	
+    df_codes_out = df_codes.drop(['questions', 'title', 'Category_old'], 1)
+
+    # write out
+    df_codes_out.rename(columns={'codes_order': 'Code_Order',
+                                 'value': 'Code_Value'},
+                        inplace=True)
+    df_codes_out = df_codes_out[['Label', 'Code_Order', 'Code_Value', 'Category']]
+    df_codes_out.to_csv(os.path.join(output_dir, 'codelist.csv'), encoding = 'utf-8', index=False, sep=';')
+
+    # 2. Response: numeric, text, datetime
     df_response = df.loc[(df.source == 'Response') , ['questions', 'sourceline', 'seq', 'title']]
-    # df_response.to_csv('../LSYPE1/wave2-html/df_response.csv', encoding = 'utf-8', index=False, sep=';')	
+    #df_response.to_csv('../LSYPE1/wave2-html/df_response.csv', encoding = 'utf-8', index=False, sep=';')
 
-    df_response['Type'] = df_response['title'].apply(lambda x: 'Numeric' if any (c in x for c in ['Numeric', 'RANGE']) else 'Datetime' if x in ['ENTER DATE', 'DATETYPE'] else 'Text')
-    df_response['Numeric_Type/Datetime_type'] = df_response['title'].apply(lambda x: 'Integer' if any (c in x for c in ['Numeric', 'RANGE']) else 'Date' if x in ['ENTER DATE', 'DATETYPE'] else '')
-    df_response['Min'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[0] if len(re.findall(r'\d+', x)) == 2
-                                                              else None)
+    df_response['Type'] = df_response['title'].apply(lambda x: 'Numeric' if any (c in x for c in ['Numeric', 'RANGE'])
+                                                          else 'Date' if x in ['ENTER DATE', 'DATETYPE']
+                                                          else 'Text')
+    df_response['Numeric_Type/Datetime_type'] = df_response['title'].apply(lambda x: 'Integer' if any (c in x for c in ['Numeric', 'RANGE'])
+                                                                                else 'DateTime' if x in ['ENTER DATE', 'DATETYPE']
+                                                                                else '')
+    df_response['Min'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[0] if len(re.findall(r'\d+', x)) == 2 else None)
     df_response['Max'] = df_response['title'].apply(lambda x: re.findall(r'\d+', x)[-1] if len(re.findall(r'\d+', x)) >= 1 else None)
 
     # request 2: Change all numeric response domains to the format 'Range: 1-18'
+    # open answers without a max be entered as Long text
+    # open answers with a max be entered as Generic text
     def find_between( s, first, last ):
         try:
             start = s.index( first ) + len( first )
@@ -674,12 +794,12 @@ def main():
             return s[start:end]
         except ValueError:
             return ""
-    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-') if not pd.isnull(row['Min']) > 0 else row['title'], axis=1)
- 
+    df_response['title1'] = df_response.apply(lambda row: row['title'].replace(find_between(row['title'], row['Min'], row['Max']), '-').replace('Numeric', 'Range').replace('Hours', 'Range:') if not pd.isnull(row['Min']) > 0 else 'Long text' if (len(re.findall('(?i)open', row['title'])) > 0 and pd.isnull(row['Max'])) else 'Generic text' if (len(re.findall('(?i)open', row['title'])) > 0 and not pd.isnull(row['Max'])) else 'Generic date' if row['title'] == 'DATETYPE' else row['title'], axis=1)
+
+    # df_response.to_csv('temp_response.csv', sep=';')
     # need to change these in the original df
     vdic = pd.Series(df_response.title1.values, index=df_response.title).to_dict()
     df.loc[df.title.isin(vdic.keys()), 'title'] = df.loc[df.title.isin(vdic.keys()), 'title'].map(vdic)
-
 
     df_response = df_response.drop('title', 1)
 
@@ -689,40 +809,57 @@ def main():
     # de-dup
     response_keep = ['Label', 'Type', 'Numeric_Type/Datetime_type', 'Min', 'Max']
     df_response_sub = df_response.loc[:, response_keep]
-    df_response_dedup = df_response_sub.drop_duplicates()
-    df_response_dedup.to_csv('../LSYPE1/wave2-html/response.csv', sep= ';', encoding = 'utf-8', index=False)
+    df_response_dedup1 = df_response_sub.drop_duplicates()
+
+    df_response_dedup = df_response_dedup1.drop_duplicates(subset='Label', keep='first')
+
+    df_response_dedup.rename(columns={'Numeric_Type/Datetime_type': 'Type2'},
+                             inplace=True)
+    df_response_dedup['Max'] = df_response_dedup.apply(lambda row: 255 if row['Label'] == 'Generic text' else row['Max'], axis=1)
+    df_response_dedup['Format'] = None
+    response_pipeline = ['Label', 'Type', 'Type2', 'Format', 'Min', 'Max']
+
+    df_response_dedup[response_pipeline].to_csv(os.path.join(output_dir, 'response.csv'), sep= ';', encoding = 'utf-8', index=False)
 
 
     # 3. Statements
     df_statement = get_statements(df[df['source'] == 'Statement'])
 
-    # 3. Question grids 
-    df_question_grids, df_qg_codes = get_question_grids(df[df['questions'].isin(question_grid_names)])
-    df_question_grids.to_csv('../LSYPE1/wave2-html/df_qg.csv', sep = ';', encoding = 'utf-8', index=False)
-
-    df_codes_out['codes_order'] = df_codes_out['codes_order'].astype(int)
-    df_codes_out['value'] = df_codes_out['value'].astype(int)
-    df_codes_final = df_codes_out.append(df_qg_codes, ignore_index=True)
-    df_codes_final.to_csv('../LSYPE1/wave2-html/codes.csv', sep = ';', encoding = 'utf-8', index=False)
-    # add one more line here for question grids
-    with open('../LSYPE1/wave2-html/codes.csv', 'a') as file:
-        file.write(';1;-;1;-\n')
-
-
-    # 4. Question items
-    # minus question grids
-    df_all_questions = df[~df['questions'].isin(question_grid_names)]
-
-    df_question_items = get_question_items(df_all_questions)
-    df_question_items.to_csv('../LSYPE1/wave2-html/df_qi.csv', sep = ';', encoding = 'utf-8', index=False)
-
+    # 4. question items
+    df_question_items = get_question_items(df)
 
     # 5. Sequences
-    df_sequences = df.loc[(df.source == 'SequenceNumber'), :].reset_index()
+    df_sequences = df[df['source'].isin(['Section', 'SequenceNumber'])]
+#    df_sequences = df.loc[(df.source == 'SequenceNumber'), :].reset_index()
     df_sequences.rename(columns={'title': 'Label'}, inplace=True)
-    df_sequences['section_id'] = df_sequences.index + 1
-    df_sequences.loc[:, ['sourceline', 'Label', 'section_id']].to_csv('../LSYPE1/wave2-html/sequences.csv', sep = ';', encoding = 'utf-8', index=False)
-	
+    df_sequences['section_id_1'] = df_sequences.groupby('section_name').cumcount()
+    df_sequences['section_id_2'] = df_sequences.groupby('source').cumcount()+1
+    df_sequences['section_id'] = df_sequences.apply(lambda row: row['section_id_1'] if row['source'] == 'SequenceNumber' else row['section_id_2'] if row['source'] == 'Section' else None, axis=1)
+    df_sequences = df_sequences.drop(columns=['section_id_1', 'section_id_2'])
+    df_sequences['Parent_Name'] = df_sequences.apply(lambda row: row['section_name'] if row['source'] == 'SequenceNumber' else 'Wave2' if row['source'] == 'Section' else None, axis=1)
+#    df_sequences['section_id'] = df_sequences.index + 1
+
+    df_sequence_input = df_sequences.loc[:, ['sourceline', 'Label', 'section_id', 'Parent_Name']]
+
+    # pipeline columns
+    sequence_pipeline = ['Label', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_sequence_input.rename(columns={'section_id': 'Position'}, inplace=True)
+    df_sequence_input['Parent_Type'] = 'CcSequence'
+
+  #  df_sequence_input['Parent_Name'] = 'Wave2'
+    df_sequence_input['Branch'] = None
+
+    df_seq_output = df_sequence_input[sequence_pipeline]
+
+    # add top level
+    df_seq_output.loc[-1] = ['Wave2', 'CcSequence', None, None, 1]  # adding a row
+
+    df_seq_output.index = df_seq_output.index + 1  # shifting index
+
+    df_seq_output.sort_index(inplace=True)
+    df_seq_output.to_csv('tmp_s.csv')
+    df_seq_output.to_csv(os.path.join(output_dir, 'sequence.csv'), sep = ';', encoding = 'utf-8', index=False)
+
 
     # 6. Conditions
     df_conditions = get_conditions(df)
@@ -733,58 +870,87 @@ def main():
     df_loops = get_loops(df)
     #df_loops.to_csv('../LSYPE1/wave2-html/df_loops.csv', sep = ';', encoding = 'utf-8', index=False)
 
-    
+
     # 8. Find parent label
     df_sequences_p = df_sequences.loc[:, ['sourceline', 'Label']]
     df_sequences_p['source'] = 'CcSequence'
-    df_questions_items_p = df_question_items.loc[:, ['sourceline', 'Label']]
+    df_questions_items_p = df_question_items.loc[:, ['sourceline', 'Label']].drop_duplicates()
+
     df_questions_items_p['source'] = 'CcQuestions'
+    """
     df_questions_grids_p = df_question_grids.loc[:, ['sourceline', 'Label']]
     df_questions_grids_p['source'] = 'CcQuestions'
-    df_conditions_p = df_conditions.loc[:, ['sourceline', 'Label']]
+    """
+    df_conditions_p = df_conditions.loc[:, ['sourceline', 'Label', 'condition_end']]
+    df_conditions_p.rename(columns={'condition_end': 'End Value'}, inplace=True)
     df_conditions_p['source'] = 'CcCondition'
+
     df_loops_p = df_loops.loc[:, ['Start Value', 'End Value', 'Label']]
     df_loops_p.rename(columns={'Start Value': 'sourceline'}, inplace=True)
     df_loops_p['source'] = 'CcLoop'
     df_statement_p = df_statement.loc[:, ['sourceline', 'Label']]
     df_statement_p['source'] = 'CcStatement'
 
-    df_sequences_p_1 = pd.DataFrame([[0, 'LSYPE_Wave_2', 'CcSequence']], columns=['sourceline', 'Label', 'source']) 	
-
+    df_sequences_p_1 = pd.DataFrame([[0, 'LSYPE_Wave_1', 'CcSequence']], columns=['sourceline', 'Label', 'source'])
+    """
     df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_questions_grids_p, df_conditions_p, df_sequences_p_1, df_loops_p, df_statement_p]).reset_index()
+    """
+    df_parent = pd.concat([df_sequences_p, df_questions_items_p, df_conditions_p, df_sequences_p_1, df_loops_p, df_statement_p]).reset_index()
+
     df_parent = df_parent.sort_values(by=['sourceline']).reset_index()
-    
+    #df_parent.to_csv('TMP_parent.csv', sep='\t')
+
     df_sequence_position = df_parent
     df_sequence_position['Position'] = range(0, len(df_sequence_position))
     df_sequence_position.to_csv('../LSYPE1/wave2-html/df_sequence_position.csv', sep = ';', encoding = 'utf-8', index=False)
-    
-    df_sequences_out = df_sequence_position.loc[(df_sequence_position['source'] == 'CcSequence') & (df_sequence_position['Label'] != 'LSYPE_Wave_2'), :]
-    df_sequences_out.rename(columns={'Position': 'section_id'}, inplace=True)
-    df_sequences_out.loc[:, ['sourceline', 'Label', 'section_id']].to_csv('../LSYPE1/wave2-html/sequences_2.csv', sep = ';', encoding = 'utf-8', index=False)
 
-    df_parent['End'] = df_parent.apply(lambda row: row['sourceline'] + 5 if row['source'] == 'CcCondition' else row['End Value'], axis=1)
+    df_sequences_out = df_sequence_position.loc[(df_sequence_position['source'] == 'CcSequence') & (df_sequence_position['Label'] != 'LSYPE_Wave_1'), :]
+    df_sequences_out.rename(columns={'Position': 'section_id'}, inplace=True)
+    df_sequences_out.loc[:, ['sourceline', 'Label', 'section_id']].to_csv('../LSYPE1/wave2-html/sequences_1.csv', sep = ';', encoding = 'utf-8', index=False)
+
+    #TODO
+    # End at the next {ask all}
+    df_parent['End'] = df_parent.apply(lambda row: row['End Value']  if row['source'] == 'CcCondition' else row['End Value'], axis=1)
 
     # sections region
     df_sequences_m = df_sequence_position.loc[(df_sequence_position['source'] == 'CcSequence'), ['Label', 'sourceline']]
     df_sequences_m.rename(columns={'Label': 'section_label'}, inplace=True)
     df_sequences_m.to_csv('../LSYPE1/wave2-html/df_sequences_m.csv', sep = ';', encoding = 'utf-8', index=False)
-    
+
 
     df_all_new = pd.merge(df_parent, df_sequences_m, how='left', on=['sourceline'])
-  #  df_all_new['section_id'] = df_all_new['section_id'].fillna(method='ffill')
+    #df_all_new['section_id'] = df_all_new['section_id'].fillna(method='ffill')
     df_all_new['section_label'] = df_all_new['section_label'].fillna(method='ffill')
-    df_all_new.to_csv('../LSYPE1/wave2-html/TMP.csv', sep = ';', encoding = 'utf-8', index=False)
-    
+    # df_all_new.to_csv('../LSYPE1/wave2-html/TMP.csv', sep = ';', encoding = 'utf-8', index=False)
+
+    # Label statements after the next question e.g, statement_1 label would be s_qSHGInt
+    # find next question for all statements
+    d_statement_name = {}
+    l_label = df_all_new['Label']
+    for index, item in enumerate(l_label):
+        if item.startswith('statement'):
+            for it in l_label[index:]:
+                if it.startswith('qi_'):
+                    d_statement_name[item] = it
+                    break
+    df_statment_name = pd.DataFrame(d_statement_name.items(), columns=['old_name', 'question_item_name'])
+    df_statment_name['question_name'] = df_statment_name['question_item_name'].apply(lambda x: x.split('_')[-1])
+    df_statment_name['question_name_num'] = df_statment_name.groupby(['question_name']).cumcount()
+    df_statment_name['new_question_name'] = df_statment_name.apply(lambda row: 's_q' + row['question_name'] if row['question_name_num'] == 0
+                                                                          else 's_q' + row['question_name'] + '_' + str(row['question_name_num']),
+                                                                          axis = 1)
+    d_statement_replace = dict(zip(df_statment_name.old_name, df_statment_name.new_question_name))
+    # print(d_statement_replace)
 
     df_mapping = df_parent.loc[ df_parent['End'] > 0, ['Label', 'source', 'sourceline', 'End']]
-  
-    df_mapping.to_csv('../LSYPE1/wave2-html/TMP_mapping.csv', sep = ';', encoding = 'utf-8', index=False)
+
+    #df_mapping.to_csv('../LSYPE1/wave2-html/TMP_mapping.csv', sep = ';', encoding = 'utf-8', index=False)
 
     # find above label
     for index,row in df_all_new.iterrows():
         df_all_new.at[index, 'above_label'] = find_parent(row['sourceline'], row['End'], df_mapping, row['source'], row['section_label'])
 
-    df_all_new.to_csv('../LSYPE1/wave2-html/TMPTMP.csv', sep = ';', encoding = 'utf-8', index=False)
+    # df_all_new.to_csv('../LSYPE1/wave2-html/TMPTMP.csv', sep = ';', encoding = 'utf-8', index=False)
 
     # calculate position
     df_all_new['Position'] = df_all_new.groupby('above_label').cumcount() + 1
@@ -794,38 +960,80 @@ def main():
     df_all_new['branch'] = 0
     df_all_new['Position'] = df_all_new['Position'].astype(int)
 
+    # replace new name for statement
+    df_all_new = df_all_new.replace(d_statement_replace)
 
     df_all_new.to_csv('../LSYPE1/wave2-html/df_parent.csv', sep = ';', encoding = 'utf-8', index=False)
 
     # output csv
     df_questions_new = pd.merge(df_question_items, df_all_new, how='left', on=['sourceline', 'Label'])
-    questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position']
-    df_questions_new[questions_keep].to_csv(os.path.join(input_dir, 'question_items.csv'), encoding='utf-8', index=False, sep = ';')
- 
+
+    questions_keep = ['Label', 'Literal', 'Instructions', 'Response', 'above_label', 'parent_type', 'branch', 'Position', 'rd_order', 'Interviewee']
+    df_qi_input = df_questions_new[questions_keep]
+
+    # pipeline columns
+    question_item_pipeline = ['Label', 'Literal', 'Instructions', 'Response', 'Parent_Type', 'Parent_Name', 'Branch', 'Position', 'min_responses', 'max_responses', 'rd_order', 'Interviewee']
+    df_qi_input.rename(columns={'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+    df_qi_input['min_responses'] = 1
+    df_qi_input['max_responses'] = 1
+
+    df_qi_input[question_item_pipeline].to_csv(os.path.join(output_dir, 'question_item.csv'), encoding='utf-8', index=False, sep = ';')
+    """
     df_question_grids_new = pd.merge(df_question_grids, df_all_new, how='left', on=['sourceline', 'Label'])
     question_grids_keep = ['Label', 'Literal', 'Instructions', 'horizontal_code_list_name', 'vertical_code_list_name', 'above_label', 'parent_type', 'branch', 'Position']
-    df_question_grids_new[question_grids_keep].to_csv(os.path.join(input_dir, 'question_grids.csv'), sep = ';', encoding='utf-8', index=False)
- 
+    df_question_grids_new[question_grids_keep].to_csv(os.path.join(output_dir, 'question_grids.csv'), sep = ';', encoding='utf-8', index=False)
+    """
     df_conditions_new = pd.merge(df_conditions, df_all_new, how='left', on=['sourceline', 'Label'])
 
     conditions_keep = ['Label', 'Literal', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
-    df_conditions_new[conditions_keep].to_csv(os.path.join(input_dir, 'conditions.csv'), sep = ';', encoding='utf-8', index=False)
-	
+    df_condition_input = df_conditions_new[conditions_keep]
+
+    # pipeline columns
+    condition_pipeline = ['Label', 'Literal', 'Logic', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_condition_input.rename(columns={'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+
+    df_condition_input[condition_pipeline].to_csv(os.path.join(output_dir, 'condition.csv'), sep = ';', encoding='utf-8', index=False)
+
     df_loops_new = pd.merge(df_loops, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
     loops_keep = ['Label', 'Variable', 'Start Value', 'End Value', 'Loop While', 'Logic', 'above_label', 'parent_type', 'branch', 'Position']
 
     df_loops_new['Start Value'] = 1
     df_loops_new['End Value'] = ''
     df_loops_new['Loop While'] = ''
-    df_loops_new[loops_keep].to_csv(os.path.join(input_dir, 'loops.csv'), encoding='utf-8', sep=';', index=False)
+
+    df_loop_input = df_loops_new[loops_keep]
+
+    # pipeline columns
+    loop_pipeline = ['Label', 'Loop_While', 'Start_value', 'End_Value', 'Variable', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_loop_input.rename(columns={'Start Value': 'Start_value',
+                                'End Value': 'End_Value',
+                                'Logic': 'Loop_While',
+                                'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+
+    df_loop_input[loop_pipeline].to_csv(os.path.join(output_dir, 'loop.csv'), encoding='utf-8', sep=';', index=False)
+
+    # replace new name for statement
+    df_statement = df_statement.replace(d_statement_replace)
 
     df_statement_new = pd.merge(df_statement, df_all_new[['Label', 'sourceline', 'Position', 'above_label', 'parent_type', 'branch']], how='left', on=['Label'])
     statement_keep = ['Label', 'Literal', 'above_label', 'parent_type', 'branch', 'Position']
-    df_statement_new[statement_keep].to_csv(os.path.join(input_dir, 'statements.csv'), encoding='utf-8', sep=';', index=False)
+
+    df_statement_input = df_statement_new[statement_keep]
+
+    # pipeline columns
+    statement_pipeline = ['Label', 'Literal', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
+    df_statement_input.rename(columns={'above_label': 'Parent_Name',
+                                'parent_type': 'Parent_Type',
+                                'branch': 'Branch'}, inplace=True)
+
+    df_statement_input[statement_pipeline].to_csv(os.path.join(output_dir, 'statement.csv'), encoding='utf-8', sep=';', index=False)
 
 
 if __name__ == "__main__":
     main()
-
-
-

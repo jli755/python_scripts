@@ -63,8 +63,8 @@ def get_class(tree, search_string, t='*'):
         else:
             search_string = 'Standard'
 
-        strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
-        s = strip_unicode.sub('', s)
+        # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
+        # s = strip_unicode.sub('', s)
 
         if s:
             dicts.append({"source": search_string,
@@ -98,8 +98,8 @@ def get_SectionNumber(tree):
     for elem in tree.xpath("//h2"):
         L = list(elem.itertext())
         s = "".join(L).strip()
-        strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
-        s = strip_unicode.sub('', s)
+        # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
+        # s = strip_unicode.sub('', s)
 
         if s:
             dicts.append({"source": 'SectionNumber',
