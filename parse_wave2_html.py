@@ -6,6 +6,7 @@
 """
 
 from collections import OrderedDict
+from unidecode import unidecode
 from lxml import etree
 import pandas as pd
 import numpy as np
@@ -65,6 +66,7 @@ def get_class(tree, search_string, t='*'):
 
         # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
         # s = strip_unicode.sub('', s)
+        s = unidecode(s)
 
         if s:
             dicts.append({"source": search_string,
@@ -83,6 +85,7 @@ def get_SequenceNumber(tree):
         s = "".join(L).strip()
         # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
         # s = strip_unicode.sub('', s)
+        s = unidecode(s)
         if s:
             dicts.append({"source": 'SequenceNumber',
                           "sourceline": elem.sourceline,
@@ -100,6 +103,7 @@ def get_SectionNumber(tree):
         s = "".join(L).strip()
         # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
         # s = strip_unicode.sub('', s)
+        s = unidecode(s)
 
         if s:
             dicts.append({"source": 'SectionNumber',
@@ -159,12 +163,12 @@ def get_questionnaire(tree):
     df = df.apply(lambda x: x.replace('U+00A9',''))
 
     # -1 for don't know and -92 for refused
-    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know|Dont Know|Don't Know).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse).*', x) != None else "99. Don't want to answer" if re.search(r"([0-9]*.*don't want to answer|Don't want to answer).*", x) != None else x)
+    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know|Dont Know|Don't Know|Don't know|DONT KNOW|DON'T KNOW).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse|REFUSE).*', x) != None else "99. Don't want to answer" if re.search(r"([0-9]*.*don't want to answer|Don't want to answer).*", x) != None else x)
 
     df.drop('title', axis=1, inplace=True)
     df.rename(columns={'title_m': 'title'}, inplace=True)
 
-    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText'])
+    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith('-1') or row['title'].startswith('-92') or  row['title'] == 'No') and row['source'] in ['Standard', 'PlainText'])
                                             else 'codelist' if row['source'] == 'listlevel1WW8Num'
                                             else 'Instruction' if row['title'].lower().startswith('show')
                                             else 'Instruction' if row['title'].lower().startswith('press')
@@ -769,6 +773,8 @@ def main():
                                  'value': 'Code_Value'},
                         inplace=True)
     df_codes_out = df_codes_out[['Label', 'Code_Order', 'Code_Value', 'Category']]
+    #remove duplicate per group;
+    df_codes_out = df_codes_out.drop_duplicates(subset=['Label', 'Category'], keep='last')
     df_codes_out.to_csv(os.path.join(output_dir, 'codelist.csv'), encoding = 'utf-8', index=False, sep=';')
 
     # 2. Response: numeric, text, datetime
