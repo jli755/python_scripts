@@ -140,6 +140,7 @@ def get_questionnaire(tree):
 
     df_NormalWeb = get_class(tree, 'NormalWeb')
 
+    # ignore footnote for now
     # df_Footnote = get_class(tree, 'Footnote')
     # df_FootnoteSymbol = get_class(tree, 'FootnoteSymbol')
 
@@ -236,7 +237,7 @@ def get_questionnaire(tree):
     new_df['condition_source'] = new_df.apply(lambda row: 'Loop' if any(re.findall(r'loop repeats|loop ends|end loop|start loop|END OF AVCE LOOP|{Record for each|{Ask for each|{For each|{Ask for all', row['title'], re.IGNORECASE)) else 'Condition' if any(re.findall(r'Ask if|{|{If|{\(If|{ If|If claiming sickness|\(If Repred|\(If Ben1|\(IF HEPOSS9 = 1-3\)|If wrk1a', row['title'], re.IGNORECASE)) else row['source'], axis=1)
     new_df['new_source'] = new_df.apply(lambda row: 'Instruction' if (((row['title'].isupper() == True and row['title'] not in('NOT USING INTERPRETER, MAIN PARENT ANSWERING QUESTIONS', 'USING INTERPRETER')) or 'INTERVIEWER' in row['title'] or 'Interviewer' in row['title'] or ('look at this card' in row['title']) or ('NOTE' in row['title']) or ('[STATEMENT]' in row['title']) ) and row['condition_source'] not in ['SequenceNumber', 'SectionNumber', 'Loop']) and 'DATETYPE' not in row['title'] else row['condition_source'], axis=1) 
 
-    question_list = ['Hdob']
+    question_list = ['Benfts', 'BenftsO', 'Chiben', 'UnEmBen', 'JSATyp', 'IncSup', 'SkDsBn', 'Family', 'HSING', 'CCTC', 'FinCour', 'Mainmeth2', 'MainMeth2O', 'CintroO']
     new_df['question_source'] = new_df.apply(lambda row: 'SectionNumber' if row['title'] in question_list else row['new_source'], axis=1)
 
     new_df['response_source'] = new_df.apply(lambda row: 'Response' if any(re.findall(r'Numeric|Open answer|Open type|OPEN ENDED|ENTER DATE|DATETYPE', row['title'], flags=re.IGNORECASE)) & ~(row['question_source'] in ('Instruction', 'Loop')) else row['question_source'], axis=1)
