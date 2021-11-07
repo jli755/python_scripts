@@ -6,6 +6,7 @@
 """
 
 from collections import OrderedDict
+from unidecode import unidecode
 from lxml import etree
 import pandas as pd
 import numpy as np
@@ -65,7 +66,7 @@ def get_class(tree, search_string, t='*'):
 
         # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
         # s = strip_unicode.sub('', s)
-
+        s = unidecode(s)
         if s:
             dicts.append({"source": search_string,
                           "sourceline": elem.sourceline,
@@ -83,6 +84,7 @@ def get_SequenceNumber(tree):
         s = "".join(L).strip()
        # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
        # s = strip_unicode.sub('', s)
+        s = unidecode(s)
         if s:
             dicts.append({"source": 'SequenceNumber',
                           "sourceline": elem.sourceline,
@@ -100,7 +102,7 @@ def get_SectionNumber(tree):
         s = "".join(L).strip()
         # strip_unicode = re.compile("([^-_a-zA-Z0-9!@#%&=,/'\";:~`\$\^\*\(\)\+\[\]\.\{\}\|\?\<\>\\]+|[^\s]+)")
         # s = strip_unicode.sub('', s)
-
+        s = unidecode(s)
         if s:
             dicts.append({"source": 'SectionNumber',
                           "sourceline": elem.sourceline,
@@ -159,12 +161,12 @@ def get_questionnaire(tree):
     df = df.apply(lambda x: x.replace('U+00A9',''))
 
     # -1 for don't know and -92 for refused
-    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know|Dont Know|Don't Know).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse).*', x) != None else "99. Don't want to answer" if re.search(r"([0-9]*.*don't want to answer|Don't want to answer).*", x) != None else x)
+    df['title_m'] = df['title'].apply(lambda x: "-1. Don't know" if re.search(r"([0-9]*.*Don't know|don't know|Dont know|Dont Know|Don't Know|Don't know|DONT KNOW|DON'T KNOW).*", x) != None else '-92. Refused' if re.search(r'([0-9]*.*Refuse|refuse|REFUSE).*', x) != None else "99. Don't want to answer" if re.search(r"([0-9]*.*don't want to answer|Don't want to answer).*", x) != None else x)
 
     df.drop('title', axis=1, inplace=True)
     df.rename(columns={'title_m': 'title'}, inplace=True)
 
-    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith("-1") or row['title'].startswith("-92")) and row['source'] in ['Standard', 'PlainText'])
+    df['source_new'] = df.apply(lambda row: 'codelist' if ((row['title'][0].isdigit() == True or row['title'].startswith('-1') or row['title'].startswith('-92') or  row['title'] == 'No') and row['source'] in ['Standard', 'PlainText'])
                                             else 'codelist' if row['source'] == 'listlevel1WW8Num'
                                             else 'Instruction' if row['title'].lower().startswith('show')
                                             else 'Instruction' if row['title'].lower().startswith('press')
@@ -565,7 +567,7 @@ def main():
 
     appended_data = []
     for idx, val in enumerate(html_names):
-        
+
         if idx == 0:
             section_name = 'HOUSEHOLD RESPONDENT SECTION'
             line_start = 78
@@ -698,7 +700,7 @@ def main():
     df.loc[df['new_sourceline'] == 200858, ['source']] = 'Statement'
     df.loc[df['new_sourceline'] == 201038, ['source']] = 'Statement'
     df.loc[df['new_sourceline'] == 100860, ['source']] = 'Statement'
-    
+
     df.loc[df['new_sourceline'] == 101717, ['source']] = 'Statement'
     df.loc[df['new_sourceline'] == 102020, ['source']] = 'Statement'
     df.loc[df['new_sourceline'] == 102028, ['source']] = 'Statement'
@@ -754,7 +756,7 @@ def main():
     df.loc[df['new_sourceline'] == 200258, ['new_sourceline']] = 200247
     df.loc[df['new_sourceline'] == 200250, ['new_sourceline']] = 200249
     df.loc[df['new_sourceline'] == 200267, ['source']] = 'codelist'
-    
+
     df.loc[df['new_sourceline'] == 630, ['source']] = 'Instruction'
 
     df = df.drop_duplicates()
@@ -808,7 +810,7 @@ def main():
 
     # strip number. out from title
     df_codes['Category_old'] = df_codes['title'].apply(lambda x: re.sub('^-*\d+', '', x).strip('.').strip(',').strip(' '))
-    
+
     # ignore the GOTO…. in categories
     df_codes['Category'] = df_codes['Category_old'].apply(lambda x: x[:x.index("GOTO")].rstrip() if 'GOTO' in x else x)
 
@@ -819,6 +821,9 @@ def main():
                                  'value': 'Code_Value'},
                         inplace=True)
     df_codes_out = df_codes_out[['Label', 'Code_Order', 'Code_Value', 'Category']]
+    #remove duplicate per group;
+    df_codes_out = df_codes_out.drop_duplicates(subset=['Label', 'Category'], keep='last')
+
     df_codes_out.to_csv(os.path.join(output_dir, 'codelist.csv'), encoding = 'utf-8', index=False, sep=';')
 
     # 2. Response: numeric, text, datetime
@@ -868,7 +873,7 @@ def main():
     df_response_dedup['Max'] = df_response_dedup.apply(lambda row: 255 if row['Label'] == 'Generic text' else row['Max'], axis=1)
     df_response_dedup['Format'] = None
     response_pipeline = ['Label', 'Type', 'Type2', 'Format', 'Min', 'Max']
-    
+
     df_response_dedup[response_pipeline].to_csv(os.path.join(output_dir, 'response.csv'), sep= ';', encoding = 'utf-8', index=False)
 
 
@@ -895,7 +900,7 @@ def main():
     sequence_pipeline = ['Label', 'Parent_Type', 'Parent_Name', 'Branch', 'Position']
     df_sequence_input.rename(columns={'section_id': 'Position'}, inplace=True)
     df_sequence_input['Parent_Type'] = 'CcSequence'
-    
+
   #  df_sequence_input['Parent_Name'] = 'Wave1'
     df_sequence_input['Branch'] = None
 
